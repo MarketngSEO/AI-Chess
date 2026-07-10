@@ -888,7 +888,7 @@ export default function App() {
         {/* Center Panel: Chess Board and Interactive Training Console */}
         <main className="flex-1 flex flex-col md:flex-row overflow-y-auto lg:h-[calc(100vh-73px)] p-4 md:p-6 gap-6">
           {/* Section 1: The Board Area */}
-          <div className="flex-1 flex flex-col items-center justify-start space-y-4 max-w-[620px] mx-auto w-full">
+          <div className="flex-1 flex flex-col items-center justify-start space-y-4 max-w-[780px] mx-auto w-full">
             {/* Top Info Bar */}
             <div className="w-full flex items-center justify-between bg-neutral-900/60 border border-neutral-900 rounded-xl px-4 py-3">
               <div className="flex items-center gap-2.5">

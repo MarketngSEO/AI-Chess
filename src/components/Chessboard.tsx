@@ -106,7 +106,7 @@ export default function Chessboard({
   };
 
   return (
-    <div className="relative w-full aspect-square max-w-[560px] mx-auto bg-neutral-900 rounded-lg shadow-2xl overflow-hidden border border-neutral-800">
+    <div className="relative w-full aspect-square max-w-[720px] mx-auto bg-neutral-900 rounded-lg shadow-2xl overflow-hidden border border-neutral-800">
       {/* 8x8 Grid */}
       <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
         {ranks.map((rank) =>
