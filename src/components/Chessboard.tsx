@@ -207,17 +207,24 @@ export default function Chessboard({
     if (isEditorMode) {
       if (!onEditorFenChange) return;
       const currentPieces = { ...parsedPieces };
+      const existing = currentPieces[squareName];
       
       if (editorSelectedPiece === "delete") {
         delete currentPieces[squareName];
       } else if (editorSelectedPiece) {
-        currentPieces[squareName] = {
-          type: editorSelectedPiece.type,
-          color: editorSelectedPiece.color
-        };
+        if (existing && existing.type === editorSelectedPiece.type && existing.color === editorSelectedPiece.color) {
+          // Tap once to erase if the exact same piece is tapped again
+          delete currentPieces[squareName];
+        } else {
+          // Add or replace
+          currentPieces[squareName] = {
+            type: editorSelectedPiece.type,
+            color: editorSelectedPiece.color
+          };
+        }
       } else {
-        // Toggle removal if nothing is selected (makes it fluid to click/clear pieces)
-        if (currentPieces[squareName]) {
+        // Toggle removal if nothing is selected
+        if (existing) {
           delete currentPieces[squareName];
         }
       }
@@ -407,6 +414,9 @@ export default function Chessboard({
 
             // Compute background color classes
             let squareBg = isDark ? "bg-emerald-800" : "bg-[#f0ebd8]";
+            if (isHighlighted) {
+              squareBg = "bg-[#f0ebd8]";
+            }
             if (isSelected) {
               squareBg = "bg-yellow-300/60";
             } else if (isLastMoveSrc || isLastMoveDst) {

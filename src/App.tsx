@@ -233,12 +233,57 @@ export default function App() {
   const checkGameOver = useCallback(
     (chessInstance: Chess) => {
       const playerColor = selectedEndgame.playerColor;
+      const isCustom = selectedEndgame.id.startsWith("custom_");
+
+      updateKingInCheck(chessInstance);
+
+      if (isCustom) {
+        if (chessInstance.isCheckmate()) {
+          const losingTurn = chessInstance.turn();
+          if (losingTurn !== playerColor) {
+            setGameStatus("checkmate_win");
+            setCoachText("Incredible! You have successfully delivered checkmate. Absolute mastery!");
+          } else {
+            setGameStatus("checkmate_lose");
+            setCoachText("Checkmate! Press 'Restart' and try again.");
+          }
+          return true;
+        }
+
+        const isRepetition = chessInstance.isThreefoldRepetition();
+        const fenParts = chessInstance.fen().split(" ");
+        const halfMoves = fenParts.length > 4 ? parseInt(fenParts[4], 10) : 0;
+        const isFiftyMoves = halfMoves >= 100;
+
+        if (chessInstance.isStalemate()) {
+          setGameStatus("draw_stalemate");
+          setCoachText("Stalemate! The game ended in a draw.");
+          return true;
+        } else if (isRepetition) {
+          setGameStatus("draw_repetition");
+          setCoachText("Draw by threefold repetition.");
+          return true;
+        } else if (chessInstance.isInsufficientMaterial()) {
+          setGameStatus("draw_insufficient");
+          setCoachText("Draw by insufficient material.");
+          return true;
+        } else if (isFiftyMoves) {
+          setGameStatus("draw_50moves");
+          setCoachText("Draw by the 50-move rule.");
+          return true;
+        } else if (chessInstance.isDraw()) {
+          setGameStatus("draw_stalemate");
+          setCoachText("The game ended in a draw.");
+          return true;
+        }
+
+        return false;
+      }
+
       const isWinObjective =
         selectedEndgame.objective.toLowerCase().includes("checkmate") ||
         selectedEndgame.objective.toLowerCase().includes("promote") ||
         selectedEndgame.objective.toLowerCase().includes("win");
-
-      updateKingInCheck(chessInstance);
 
       if (chessInstance.isCheckmate()) {
         const losingTurn = chessInstance.turn();
