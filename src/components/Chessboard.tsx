@@ -6,6 +6,79 @@
 import React, { useState, useEffect } from "react";
 import { Chess, Square } from "chess.js";
 
+interface ChessPiece {
+  type: string; // 'p', 'r', 'n', 'b', 'q', 'k'
+  color: "w" | "b";
+}
+
+const parsePiecesFromFen = (fenString: string): Record<string, ChessPiece> => {
+  const pieces: Record<string, ChessPiece> = {};
+  if (!fenString) return pieces;
+  
+  const parts = fenString.trim().split(/\s+/);
+  const placement = parts[0];
+  const rows = placement.split("/");
+  
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  
+  for (let r = 0; r < 8; r++) {
+    const row = rows[r];
+    if (!row) continue;
+    
+    let fileIdx = 0;
+    for (let i = 0; i < row.length; i++) {
+      const char = row[i];
+      if (/[1-8]/.test(char)) {
+        fileIdx += parseInt(char, 10);
+      } else {
+        const color = char === char.toUpperCase() ? "w" : "b";
+        const type = char.toLowerCase();
+        const square = `${files[fileIdx]}${8 - r}`;
+        pieces[square] = { type, color };
+        fileIdx++;
+      }
+    }
+  }
+  return pieces;
+};
+
+const generateFenFromPieces = (
+  pieces: Record<string, ChessPiece>,
+  turn: "w" | "b" = "w"
+): string => {
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const rows: string[] = [];
+  
+  for (let r = 8; r >= 1; r--) {
+    let rowStr = "";
+    let emptyCount = 0;
+    
+    for (let f = 0; f < 8; f++) {
+      const square = `${files[f]}${r}`;
+      const piece = pieces[square];
+      
+      if (piece) {
+        if (emptyCount > 0) {
+          rowStr += emptyCount.toString();
+          emptyCount = 0;
+        }
+        const char = piece.color === "w" ? piece.type.toUpperCase() : piece.type.toLowerCase();
+        rowStr += char;
+      } else {
+        emptyCount++;
+      }
+    }
+    
+    if (emptyCount > 0) {
+      rowStr += emptyCount.toString();
+    }
+    rows.push(rowStr);
+  }
+  
+  const placement = rows.join("/");
+  return `${placement} ${turn} - - 0 1`;
+};
+
 interface ChessboardProps {
   fen: string;
   actualFen?: string;
@@ -74,7 +147,19 @@ export default function Chessboard({
   const [rightClickStart, setRightClickStart] = useState<string | null>(null);
   const [rightClickHover, setRightClickHover] = useState<string | null>(null);
 
-  const chess = React.useMemo(() => new Chess(fen), [fen]);
+  const chess = React.useMemo(() => {
+    try {
+      return new Chess(fen);
+    } catch {
+      try {
+        return new Chess("8/8/8/8/8/8/8/8 w - - 0 1");
+      } catch {
+        return new Chess();
+      }
+    }
+  }, [fen]);
+
+  const parsedPieces = React.useMemo(() => parsePiecesFromFen(fen), [fen]);
 
   // Reset selection when FEN changes (e.g. new game loaded or computer moved)
   useEffect(() => {
@@ -90,11 +175,7 @@ export default function Chessboard({
   const files = playerColor === "w" ? ["a", "b", "c", "d", "e", "f", "g", "h"] : ["h", "g", "f", "e", "d", "c", "b", "a"];
 
   const getPieceAt = (squareName: string) => {
-    try {
-      return chess.get(squareName as Square);
-    } catch {
-      return null;
-    }
+    return parsedPieces[squareName] || null;
   };
 
   const isPlayerTurn = isInteractive;
@@ -125,26 +206,27 @@ export default function Chessboard({
 
     if (isEditorMode) {
       if (!onEditorFenChange) return;
-      try {
-        const nextChess = new Chess(fen);
-        if (editorSelectedPiece === "delete") {
-          nextChess.remove(squareName as Square);
-        } else if (editorSelectedPiece) {
-          nextChess.put(
-            { type: editorSelectedPiece.type as any, color: editorSelectedPiece.color },
-            squareName as Square
-          );
-        } else {
-          // If no specific palette piece is selected, clicking a square toggles removal to keep it fluid
-          const existing = nextChess.get(squareName as Square);
-          if (existing) {
-            nextChess.remove(squareName as Square);
-          }
+      const currentPieces = { ...parsedPieces };
+      
+      if (editorSelectedPiece === "delete") {
+        delete currentPieces[squareName];
+      } else if (editorSelectedPiece) {
+        currentPieces[squareName] = {
+          type: editorSelectedPiece.type,
+          color: editorSelectedPiece.color
+        };
+      } else {
+        // Toggle removal if nothing is selected (makes it fluid to click/clear pieces)
+        if (currentPieces[squareName]) {
+          delete currentPieces[squareName];
         }
-        onEditorFenChange(nextChess.fen());
-      } catch (err) {
-        console.error("Failed to update board in editor mode", err);
       }
+      
+      const parts = fen.trim().split(/\s+/);
+      const turn = (parts[1] === "w" || parts[1] === "b") ? (parts[1] as "w" | "b") : "w";
+      
+      const newFen = generateFenFromPieces(currentPieces, turn);
+      onEditorFenChange(newFen);
       return;
     }
 
@@ -360,7 +442,7 @@ export default function Chessboard({
                     setDragOverSquare(null);
                   }
                 }}
-                onDrop={(e) => {
+                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOverSquare(null);
 
@@ -368,28 +450,30 @@ export default function Chessboard({
                     const fromSquare = e.dataTransfer.getData("text/plain");
                     const pieceData = e.dataTransfer.getData("text/piece");
 
-                    try {
-                      const nextChess = new Chess(fen);
-                      if (pieceData) {
+                    const currentPieces = { ...parsedPieces };
+
+                    if (pieceData) {
+                      try {
                         const pieceObj = JSON.parse(pieceData);
-                        nextChess.put(
-                          { type: pieceObj.type, color: pieceObj.color },
-                          squareName as Square
-                        );
-                      } else if (fromSquare && fromSquare !== squareName) {
-                        const existing = nextChess.get(fromSquare as Square);
-                        if (existing) {
-                          nextChess.remove(fromSquare as Square);
-                          nextChess.put(
-                            { type: existing.type, color: existing.color },
-                            squareName as Square
-                          );
-                        }
+                        currentPieces[squareName] = {
+                          type: pieceObj.type,
+                          color: pieceObj.color
+                        };
+                      } catch (err) {
+                        console.error("Failed to parse piece data on drop", err);
                       }
-                      onEditorFenChange(nextChess.fen());
-                    } catch (err) {
-                      console.error("Editor piece drop failed", err);
+                    } else if (fromSquare && fromSquare !== squareName) {
+                      const existing = currentPieces[fromSquare];
+                      if (existing) {
+                        delete currentPieces[fromSquare];
+                        currentPieces[squareName] = existing;
+                      }
                     }
+
+                    const parts = fen.trim().split(/\s+/);
+                    const turn = (parts[1] === "w" || parts[1] === "b") ? (parts[1] as "w" | "b") : "w";
+                    const newFen = generateFenFromPieces(currentPieces, turn);
+                    onEditorFenChange(newFen);
                     return;
                   }
 

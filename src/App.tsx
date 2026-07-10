@@ -255,18 +255,37 @@ export default function App() {
         return true;
       }
 
-      if (chessInstance.isDraw()) {
+      // Explicit threefold repetition check
+      const isRepetition = chessInstance.isThreefoldRepetition();
+      
+      // Explicit 50-move rule check (halfmove clock >= 100)
+      const fenParts = chessInstance.fen().split(" ");
+      const halfMoves = fenParts.length > 4 ? parseInt(fenParts[4], 10) : 0;
+      const isFiftyMoves = halfMoves >= 100;
+
+      // Draw conditions
+      const isDraw = chessInstance.isDraw() || isRepetition || isFiftyMoves;
+
+      if (isDraw) {
         if (!isWinObjective) {
           // The goal was to draw (e.g. Philidor) -> Player Wins!
           setGameStatus("checkmate_win");
           markEndgameCompleted(selectedEndgame.id);
-          setCoachText("Superb defense! You successfully held the draw, completing the exercise objective.");
+          if (isRepetition) {
+            setCoachText("Superb defense! You successfully held the draw by threefold repetition, completing the exercise objective.");
+          } else if (isFiftyMoves) {
+            setCoachText("Superb defense! You successfully held the draw by the 50-move rule, completing the exercise objective.");
+          } else if (chessInstance.isStalemate()) {
+            setCoachText("Superb defense! You successfully held the draw by stalemate, completing the exercise objective.");
+          } else {
+            setCoachText("Superb defense! You successfully held the draw, completing the exercise objective.");
+          }
         } else {
           // The goal was to win, but player drew -> Fail
           if (chessInstance.isStalemate()) {
             setGameStatus("draw_stalemate");
             setCoachText("Stalemate! The enemy king has no legal moves. In a winning endgame, this is a drawn result. Be careful next time!");
-          } else if (chessInstance.isThreefoldRepetition()) {
+          } else if (isRepetition) {
             setGameStatus("draw_repetition");
             setCoachText("Draw by threefold repetition. You must actively press for the win rather than repeating moves!");
           } else if (chessInstance.isInsufficientMaterial()) {
@@ -274,7 +293,7 @@ export default function App() {
             setCoachText("Draw by insufficient material. You lack the pieces necessary to deliver checkmate.");
           } else {
             setGameStatus("draw_50moves");
-            setCoachText("Draw by 50-move rule. You ran out of moves to win!");
+            setCoachText("Draw by the 50-move rule. You made 50 consecutive moves without a pawn move or a capture!");
           }
         }
         return true;
@@ -916,7 +935,7 @@ export default function App() {
                         type="button"
                         className="flex-1 py-1.5 text-[10px] font-mono font-bold rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-200 transition-all flex items-center justify-center gap-1.5"
                         onClick={() => {
-                          setCustomFen("4k3/8/8/8/4K3/8/8/8 w - - 0 1");
+                          setCustomFen("8/8/8/8/8/8/8/8 w - - 0 1");
                           setEditorSelectedPiece(null);
                           setFenError(null);
                         }}
@@ -1098,6 +1117,16 @@ export default function App() {
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 mt-auto"
                   onClick={() => {
                     try {
+                      // Count kings in customFen
+                      const mainPlacement = customFen.trim().split(/\s+/)[0];
+                      const whiteKings = (mainPlacement.match(/K/g) || []).length;
+                      const blackKings = (mainPlacement.match(/k/g) || []).length;
+
+                      if (whiteKings !== 1 || blackKings !== 1) {
+                        setFenError("Validation failed: A valid chess position must contain exactly one White King and one Black King.");
+                        return;
+                      }
+
                       const testGame = new Chess(customFen);
                       // Ensure turn match
                       const parts = customFen.trim().split(/\s+/);
@@ -1293,6 +1322,14 @@ export default function App() {
                               ? "Checkmate!"
                               : gameStatus === "failed_moves"
                               ? "Out of Moves!"
+                              : gameStatus === "draw_stalemate"
+                              ? "Draw by Stalemate!"
+                              : gameStatus === "draw_repetition"
+                              ? "Draw by Threefold Repetition!"
+                              : gameStatus === "draw_50moves"
+                              ? "Draw by 50-Move Rule!"
+                              : gameStatus === "draw_insufficient"
+                              ? "Draw by Insufficient Material!"
                               : "Draw / Failure"}
                           </h3>
                           <p className="text-sm text-neutral-300 max-w-sm mx-auto">
@@ -1300,6 +1337,12 @@ export default function App() {
                               ? "The computer successfully delivered mate. Reset the board to try again!"
                               : gameStatus === "draw_stalemate"
                               ? "A stalemate draw occurred, but the objective required a win. Keep the enemy king active!"
+                              : gameStatus === "draw_repetition"
+                              ? "A draw by threefold repetition occurred. Avoid repeating the same position three times when trying to win!"
+                              : gameStatus === "draw_50moves"
+                              ? "A draw by the 50-move rule occurred. You made 50 consecutive moves without a pawn move or a capture!"
+                              : gameStatus === "draw_insufficient"
+                              ? "Draw by insufficient material. You lack the pieces necessary to deliver checkmate."
                               : "You drew the game but your goal was to win. Let's try again with a cleaner technique!"}
                           </p>
                         </div>
