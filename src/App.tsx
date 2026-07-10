@@ -351,6 +351,18 @@ export default function App() {
 
   // --- COMPUTER ENGINE LOGIC (STOCKFISH API) ---
 
+  const getGameWithHistory = useCallback((startFen: string, moveHistory: PlayHistoryItem[]) => {
+    const tempGame = new Chess(startFen);
+    for (const item of moveHistory) {
+      try {
+        tempGame.move({ from: item.from, to: item.to, promotion: item.promotion || "q" });
+      } catch (err) {
+        console.error("Error re-applying move in history", item, err);
+      }
+    }
+    return tempGame;
+  }, []);
+
   const getEngineDepth = (difficulty: Difficulty) => {
     return 15; // Stockfish is always set to maximum depth (full potential)
   };
@@ -395,7 +407,7 @@ export default function App() {
             const to = uciMove.substring(2, 4);
             const promo = uciMove.length === 5 ? uciMove.substring(4, 5) : undefined;
 
-            const nextGame = new Chess(chessInstance.fen());
+            const nextGame = getGameWithHistory(selectedEndgame.fen, history);
             const executedMove = nextGame.move({ from, to, promotion: promo });
 
             if (executedMove) {
@@ -411,6 +423,7 @@ export default function App() {
                 color: executedMove.color,
                 fenAfter: nextGame.fen(),
                 timestamp: Date.now(),
+                promotion: promo,
               };
               setHistory((prev) => [...prev, historyItem]);
 
@@ -436,7 +449,7 @@ export default function App() {
         console.error("Stockfish API call failed, invoking client fallback", error);
 
         // FALLBACK: Choose a random legal move so the board never locks
-        const nextGame = new Chess(chessInstance.fen());
+        const nextGame = getGameWithHistory(selectedEndgame.fen, history);
         const moves = nextGame.moves({ verbose: true });
         if (moves.length > 0) {
           // Try to prioritize checks or captures to feel 'semi-intelligent'
@@ -459,6 +472,7 @@ export default function App() {
                 color: executed.color,
                 fenAfter: nextGame.fen(),
                 timestamp: Date.now(),
+                promotion: "q",
               },
             ]);
             checkGameOver(nextGame);
@@ -468,7 +482,7 @@ export default function App() {
         setIsThinking(false);
       }
     },
-    [selectedEndgame.difficulty, checkGameOver]
+    [selectedEndgame, history, checkGameOver, getGameWithHistory]
   );
 
   // Trigger computer move if it is their turn on load or custom setup
@@ -493,7 +507,7 @@ export default function App() {
         const firstPremove = nextPremoves.shift()!;
         setPremoves(nextPremoves);
 
-        const playerGame = new Chess(game.fen());
+        const playerGame = getGameWithHistory(selectedEndgame.fen, history);
         try {
           const executed = playerGame.move({
             from: firstPremove.from,
@@ -515,6 +529,7 @@ export default function App() {
               color: executed.color,
               fenAfter: playerGame.fen(),
               timestamp: Date.now(),
+              promotion: firstPremove.promotion || "q",
             };
             setHistory((prev) => [...prev, historyItem]);
 
@@ -536,7 +551,7 @@ export default function App() {
         }
       }
     }
-  }, [boardFen, isThinking, game, premoves, gameStatus, selectedEndgame.playerColor, makeComputerMove, checkGameOver]);
+  }, [boardFen, isThinking, game, premoves, gameStatus, selectedEndgame.playerColor, history, makeComputerMove, checkGameOver, getGameWithHistory]);
 
   // Clear premoves when the game ends
   useEffect(() => {
@@ -558,7 +573,7 @@ export default function App() {
   const handlePlayerMove = (from: string, to: string, promotion?: string) => {
     if (gameStatus !== "playing" || isThinking) return;
 
-    const nextGame = new Chess(game.fen());
+    const nextGame = getGameWithHistory(selectedEndgame.fen, history);
     try {
       const executedMove = nextGame.move({ from, to, promotion: promotion || "q" });
 
@@ -575,6 +590,7 @@ export default function App() {
           color: executedMove.color,
           fenAfter: nextGame.fen(),
           timestamp: Date.now(),
+          promotion: promotion || "q",
         };
         const updatedHistory = [...history, historyItem];
         setHistory(updatedHistory);
@@ -1261,47 +1277,21 @@ export default function App() {
             {/* Chessboard & Eval Bar row */}
             <div className="relative w-full flex items-stretch gap-3">
               {/* Vertical Lichess-style Evaluation Bar */}
-              <div className="w-5 bg-neutral-800 rounded-md overflow-hidden border border-neutral-700 flex flex-col relative shadow-inner select-none shrink-0">
+              <div className="w-5 bg-neutral-950 rounded-md overflow-hidden border border-neutral-700 relative shadow-inner select-none shrink-0">
+                {/* White advantage segment */}
+                <div
+                  className={`absolute left-0 w-full bg-[#f0ebd8] transition-all duration-500 ease-out ${
+                    isFlipped ? "top-0" : "bottom-0"
+                  }`}
+                  style={{ height: `${evalPercentage}%` }}
+                />
+
                 {/* Score indicators */}
                 <div className="absolute inset-0 flex flex-col justify-between items-center text-[8px] font-bold py-2 font-mono text-neutral-400/80 pointer-events-none z-10">
                   <span>{isFlipped ? "-5" : "+5"}</span>
                   <span>0</span>
                   <span>{isFlipped ? "+5" : "-5"}</span>
                 </div>
-
-                {isFlipped ? (
-                  <>
-                    {/* White advantage segment (on top when flipped) */}
-                    <div
-                      key="white-seg-flipped"
-                      className="w-full bg-[#f0ebd8] transition-all duration-500 ease-out"
-                      style={{ height: `${evalPercentage}%` }}
-                    />
-
-                    {/* Black advantage segment (on bottom when flipped) */}
-                    <div
-                      key="black-seg-flipped"
-                      className="w-full bg-neutral-900 transition-all duration-500 ease-out"
-                      style={{ height: `${100 - evalPercentage}%` }}
-                    />
-                  </>
-                ) : (
-                  <>
-                    {/* Black advantage segment (on top when not flipped) */}
-                    <div
-                      key="black-seg-normal"
-                      className="w-full bg-neutral-900 transition-all duration-500 ease-out"
-                      style={{ height: `${100 - evalPercentage}%` }}
-                    />
-
-                    {/* White advantage segment (on bottom when not flipped) */}
-                    <div
-                      key="white-seg-normal"
-                      className="w-full bg-[#f0ebd8] transition-all duration-500 ease-out"
-                      style={{ height: `${evalPercentage}%` }}
-                    />
-                  </>
-                )}
 
                 {/* Micro numerical label overlaid on bar */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/60 px-1 py-0.5 rounded text-[7px] font-bold text-white font-mono pointer-events-none z-20 whitespace-nowrap">

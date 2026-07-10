@@ -37,6 +37,7 @@ export interface PlayHistoryItem {
   color: "w" | "b";
   fenAfter: string;
   timestamp: number;
+  promotion?: string;
 }
 
 export interface UserStats {

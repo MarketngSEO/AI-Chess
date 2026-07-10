@@ -593,8 +593,8 @@ export default function Chessboard({
                 )}
 
                 {/* Rank and File Labels */}
-                {/* File labels along the bottom rank (rank 1 if White, rank 8 if Black) */}
-                {((playerColor === "w" && rank === 1) || (playerColor === "b" && rank === 8)) && (
+                {/* File labels along the bottom rank */}
+                {rank === ranks[ranks.length - 1] && (
                   <span
                     className={`absolute bottom-0.5 right-1 text-[10px] font-bold select-none z-30 ${
                       isDark ? "text-[#f0ebd8]/80" : "text-emerald-900/80"
@@ -604,8 +604,8 @@ export default function Chessboard({
                   </span>
                 )}
 
-                {/* Rank labels along the left file (file 'a' if White, file 'h' if Black) */}
-                {((playerColor === "w" && file === "a") || (playerColor === "b" && file === "h")) && (
+                {/* Rank labels along the left file */}
+                {file === files[0] && (
                   <span
                     className={`absolute top-0.5 left-1 text-[10px] font-bold select-none z-30 ${
                       isDark ? "text-[#f0ebd8]/80" : "text-emerald-900/80"
