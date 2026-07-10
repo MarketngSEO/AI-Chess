@@ -109,6 +109,9 @@ export default function App() {
   const [kingInCheckSquare, setKingInCheckSquare] = useState<string | null>(null);
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [boardTheme, setBoardTheme] = useState<"emerald" | "blue" | "charcoal" | "indigo">("emerald");
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analysisArrow, setAnalysisArrow] = useState<{ from: string; to: string } | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
 
   // Status and evaluation states
   const [gameStatus, setGameStatus] = useState<
@@ -199,6 +202,7 @@ export default function App() {
     setForcedMate(null);
     setIsThinking(false);
     setPremoves([]);
+    setAnalysisArrow(null);
 
     // Auto-flip board to match player color
     setIsFlipped(endgame.playerColor === "b");
@@ -365,23 +369,68 @@ export default function App() {
   }, []);
 
   const getEngineDepth = (difficulty: Difficulty) => {
-    return 15; // Stockfish is always set to maximum depth (full potential)
+    return 16; // Always set to maximum potential
+  };
+
+  const fetchBestMove = async (fen: string): Promise<{ bestMove: string; evaluation?: number; mate?: number | null }> => {
+    // 1. Try Lichess Cloud Evaluation first - contains depth 30-50 GM play for standard/endgame positions
+    try {
+      const lichessUrl = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}`;
+      const res = await fetch(lichessUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.pvs && data.pvs.length > 0 && data.pvs[0].moves) {
+          const moves = data.pvs[0].moves.split(" ");
+          const bestMoveUci = moves[0];
+          if (bestMoveUci) {
+            console.log("Fetched elite move from Lichess Cloud Eval:", bestMoveUci, data.pvs[0]);
+            // Convert centipawns or mate info
+            let evalScore = 0;
+            if (data.pvs[0].cp !== undefined) {
+              evalScore = data.pvs[0].cp / 100; // standard centipawn representation in client
+            }
+            return {
+              bestMove: bestMoveUci,
+              evaluation: evalScore,
+              mate: data.pvs[0].mate !== undefined ? data.pvs[0].mate : null
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Lichess Cloud Eval not available, continuing to Stockfish", err);
+    }
+
+    // 2. Fallback to Stockfish Online API at max depth 16
+    const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=16`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Stockfish.online v2 error with status ${response.status}`);
+    }
+    const data = await response.json();
+    if (data.success && data.bestmove) {
+      const match = data.bestmove.match(/^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/i);
+      if (match) {
+        return {
+          bestMove: match[1],
+          evaluation: data.evaluation !== undefined ? data.evaluation : undefined,
+          mate: data.mate !== undefined ? data.mate : null
+        };
+      }
+    }
+    throw new Error("Could not parse best move from Stockfish API");
   };
 
   const fetchStockfishEvaluation = async (fen: string) => {
     try {
-      const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=15`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data.success) {
-        if (data.evaluation !== undefined && data.evaluation !== null) {
-          setEvaluation(data.evaluation);
-        }
-        if (data.mate !== undefined) {
-          setForcedMate(data.mate);
-        } else {
-          setForcedMate(null);
-        }
+      const res = await fetchBestMove(fen);
+      if (res.evaluation !== undefined) {
+        setEvaluation(res.evaluation);
+      }
+      if (res.mate !== undefined) {
+        setForcedMate(res.mate);
+      } else {
+        setForcedMate(null);
       }
     } catch (err) {
       console.warn("Could not retrieve evaluation in background", err);
@@ -392,62 +441,53 @@ export default function App() {
     async (chessInstance: Chess) => {
       setIsThinking(true);
       const fen = chessInstance.fen();
-      const depth = getEngineDepth(selectedEndgame.difficulty);
 
       try {
-        const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=${depth}`;
-        const response = await fetch(url);
-        const data = await response.json();
+        const result = await fetchBestMove(fen);
+        const uciMove = result.bestMove;
 
-        if (data.success && data.bestmove) {
-          // Parse UCI output format, e.g., "bestmove e2e4 ponder e7e5" -> "e2e4"
-          const match = data.bestmove.match(/^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/i);
-          if (match) {
-            const uciMove = match[1];
-            const from = uciMove.substring(0, 2);
-            const to = uciMove.substring(2, 4);
-            const promo = uciMove.length === 5 ? uciMove.substring(4, 5) : undefined;
+        if (uciMove) {
+          const from = uciMove.substring(0, 2);
+          const to = uciMove.substring(2, 4);
+          const promo = uciMove.length === 5 ? uciMove.substring(4, 5) : undefined;
 
-            const nextGame = new Chess(selectedEndgame.fen);
-            for (const m of chessInstance.history({ verbose: true })) {
-              nextGame.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+          const nextGame = new Chess(selectedEndgame.fen);
+          for (const m of chessInstance.history({ verbose: true })) {
+            nextGame.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+          }
+          const executedMove = nextGame.move({ from, to, promotion: promo });
+
+          if (executedMove) {
+            setGame(nextGame);
+            setBoardFen(nextGame.fen());
+            setLastMove({ from, to });
+
+            // Record history
+            const historyItem: PlayHistoryItem = {
+              san: executedMove.san,
+              from,
+              to,
+              color: executedMove.color,
+              fenAfter: nextGame.fen(),
+              timestamp: Date.now(),
+              promotion: promo,
+            };
+            setHistory((prev) => [...prev, historyItem]);
+
+            // Update evaluation
+            if (result.evaluation !== undefined) {
+              setEvaluation(result.evaluation);
             }
-            const executedMove = nextGame.move({ from, to, promotion: promo });
-
-            if (executedMove) {
-              setGame(nextGame);
-              setBoardFen(nextGame.fen());
-              setLastMove({ from, to });
-
-              // Record history
-              const historyItem: PlayHistoryItem = {
-                san: executedMove.san,
-                from,
-                to,
-                color: executedMove.color,
-                fenAfter: nextGame.fen(),
-                timestamp: Date.now(),
-                promotion: promo,
-              };
-              setHistory((prev) => [...prev, historyItem]);
-
-              // Update evaluation
-              if (data.evaluation !== undefined && data.evaluation !== null) {
-                setEvaluation(data.evaluation);
-              }
-              if (data.mate !== undefined) {
-                setForcedMate(data.mate);
-              } else {
-                setForcedMate(null);
-              }
-
-              checkGameOver(nextGame);
+            if (result.mate !== undefined) {
+              setForcedMate(result.mate);
+            } else {
+              setForcedMate(null);
             }
-          } else {
-            throw new Error("Could not parse UCI bestmove");
+
+            checkGameOver(nextGame);
           }
         } else {
-          throw new Error("Stockfish API error or unsuccessful response");
+          throw new Error("Could not parse best move");
         }
       } catch (error) {
         console.error("Stockfish API call failed, invoking client fallback", error);

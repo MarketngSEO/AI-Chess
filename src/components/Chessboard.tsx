@@ -97,6 +97,7 @@ interface ChessboardProps {
   onClearPremoves?: () => void;
   isFlipped?: boolean;
   boardTheme?: "emerald" | "blue" | "charcoal" | "indigo";
+  analysisArrow?: { from: string; to: string } | null;
 }
 
 const getHypotheticalChessState = (
@@ -136,6 +137,7 @@ export default function Chessboard({
   onClearPremoves,
   isFlipped,
   boardTheme = "emerald",
+  analysisArrow = null,
 }: ChessboardProps) {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [validMoves, setValidMoves] = useState<string[]>([]);
@@ -732,7 +734,35 @@ export default function Chessboard({
           >
             <path d="M 1.5,1.5 L 7,4 L 1.5,6.5 L 2.8,4 Z" fill="#ef4444" />
           </marker>
+          <marker
+            id="arrowhead-blue"
+            markerWidth="10"
+            markerHeight="10"
+            refX="6.5"
+            refY="4"
+            orient="auto"
+          >
+            <path d="M 1.5,1.5 L 7,4 L 1.5,6.5 L 2.8,4 Z" fill="#3b82f6" />
+          </marker>
         </defs>
+
+        {/* Best Move Analysis Arrow (Semi-transparent) */}
+        {analysisArrow && (() => {
+          const pathD = getArrowPath(analysisArrow.from, analysisArrow.to);
+          return (
+            <path
+              id="arrow-analysis"
+              d={pathD}
+              stroke="#3b82f6"
+              strokeWidth="2.4"
+              fill="none"
+              opacity="0.5"
+              markerEnd="url(#arrowhead-blue)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        })()}
 
         {/* Established Arrows */}
         {arrows.map((arrow, idx) => {
