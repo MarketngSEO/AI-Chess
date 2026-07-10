@@ -320,18 +320,70 @@ export default function Chessboard({
     };
   };
 
-  const getArrowPoints = (from: string, to: string) => {
+  const isKnightL = (from: string, to: string) => {
+    const f1 = files.indexOf(from[0]);
+    const r1 = ranks.indexOf(parseInt(from[1], 10));
+    const f2 = files.indexOf(to[0]);
+    const r2 = ranks.indexOf(parseInt(to[1], 10));
+    if (f1 === -1 || r1 === -1 || f2 === -1 || r2 === -1) return false;
+    const fileDiff = Math.abs(f1 - f2);
+    const rankDiff = Math.abs(r1 - r2);
+    return (fileDiff === 1 && rankDiff === 2) || (fileDiff === 2 && rankDiff === 1);
+  };
+
+  const getArrowPath = (from: string, to: string) => {
     const p1 = getSquareCenterPercent(from);
     const p2 = getSquareCenterPercent(to);
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
-    // Shorten the end point slightly so arrowhead is positioned beautifully
-    const shortenAmount = 3.8; // percent of board
-    const x2 = p2.x - (dx / len) * shortenAmount;
-    const y2 = p2.y - (dy / len) * shortenAmount;
-    return { x1: p1.x, y1: p1.y, x2, y2 };
+    
+    if (isKnightL(from, to)) {
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      
+      let corner: { x: number; y: number };
+      if (Math.abs(dx) > Math.abs(dy)) {
+        corner = { x: p2.x, y: p1.y };
+      } else {
+        corner = { x: p1.x, y: p2.y };
+      }
+      
+      const v2 = { x: p2.x - corner.x, y: p2.y - corner.y };
+      const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+      const shortenAmount = 4.2; 
+      const p2Short = {
+        x: p2.x - (v2.x / len2) * shortenAmount,
+        y: p2.y - (v2.y / len2) * shortenAmount,
+      };
+      
+      const v1 = { x: p1.x - corner.x, y: p1.y - corner.y };
+      const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+      
+      const v2Short = { x: p2Short.x - corner.x, y: p2Short.y - corner.y };
+      const len2Short = Math.sqrt(v2Short.x * v2Short.x + v2Short.y * v2Short.y);
+      
+      const R = 5.0;
+      const d_r = Math.min(R, len1 / 2, len2Short / 2);
+      
+      const q1 = {
+        x: corner.x + (v1.x / len1) * d_r,
+        y: corner.y + (v1.y / len1) * d_r,
+      };
+      const q2 = {
+        x: corner.x + (v2Short.x / len2Short) * d_r,
+        y: corner.y + (v2Short.y / len2Short) * d_r,
+      };
+      
+      return `M ${p1.x} ${p1.y} L ${q1.x} ${q1.y} Q ${corner.x} ${corner.y} ${q2.x} ${q2.y} L ${p2Short.x} ${p2Short.y}`;
+    } else {
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+      
+      const shortenAmount = 4.2; 
+      const x2 = p2.x - (dx / len) * shortenAmount;
+      const y2 = p2.y - (dy / len) * shortenAmount;
+      return `M ${p1.x} ${p1.y} L ${x2} ${y2}`;
+    }
   };
 
   const handleSquareMouseDown = (e: React.MouseEvent, squareName: string) => {
@@ -625,61 +677,59 @@ export default function Chessboard({
         <defs>
           <marker
             id="arrowhead-orange"
-            markerWidth="6"
-            markerHeight="6"
-            refX="4.2"
-            refY="3"
+            markerWidth="8"
+            markerHeight="8"
+            refX="5"
+            refY="4"
             orient="auto"
           >
-            <path d="M0,1 L0,5 L5,3 Z" fill="#f6a23e" />
+            <path d="M 0.5,1 C 1.8,2.2 1.8,5.8 0.5,7 L 7,4 Z" fill="#f6a23e" />
           </marker>
           <marker
             id="arrowhead-red"
-            markerWidth="6"
-            markerHeight="6"
-            refX="4.2"
-            refY="3"
+            markerWidth="8"
+            markerHeight="8"
+            refX="5"
+            refY="4"
             orient="auto"
           >
-            <path d="M0,1 L0,5 L5,3 Z" fill="#ef4444" />
+            <path d="M 0.5,1 C 1.8,2.2 1.8,5.8 0.5,7 L 7,4 Z" fill="#ef4444" />
           </marker>
         </defs>
 
-
-
         {/* Established Arrows */}
         {arrows.map((arrow, idx) => {
-          const pts = getArrowPoints(arrow.from, arrow.to);
+          const pathD = getArrowPath(arrow.from, arrow.to);
           return (
-            <line
+            <path
               key={idx}
-              x1={pts.x1}
-              y1={pts.y1}
-              x2={pts.x2}
-              y2={pts.y2}
+              id={`arrow-est-${idx}`}
+              d={pathD}
               stroke="#f6a23e"
               strokeWidth="1.6"
+              fill="none"
               opacity="0.85"
               markerEnd="url(#arrowhead-orange)"
               strokeLinecap="round"
+              strokeLinejoin="round"
             />
           );
         })}
 
         {/* Live Active Drag Arrow */}
         {rightClickStart && rightClickHover && rightClickStart !== rightClickHover && (() => {
-          const pts = getArrowPoints(rightClickStart, rightClickHover);
+          const pathD = getArrowPath(rightClickStart, rightClickHover);
           return (
-            <line
-              x1={pts.x1}
-              y1={pts.y1}
-              x2={pts.x2}
-              y2={pts.y2}
+            <path
+              id="arrow-live"
+              d={pathD}
               stroke="#f6a23e"
               strokeWidth="1.6"
+              fill="none"
               opacity="0.6"
               markerEnd="url(#arrowhead-orange)"
               strokeLinecap="round"
+              strokeLinejoin="round"
             />
           );
         })()}
