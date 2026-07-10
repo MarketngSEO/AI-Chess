@@ -25,6 +25,7 @@ export default function Chessboard({
 }: ChessboardProps) {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [validMoves, setValidMoves] = useState<string[]>([]);
+  const [dragOverSquare, setDragOverSquare] = useState<string | null>(null);
   const [promotionPending, setPromotionPending] = useState<{
     from: string;
     to: string;
@@ -131,12 +132,56 @@ export default function Chessboard({
               squareBg = "bg-red-500/60 animate-pulse";
             }
 
+            const isDraggedOverValid = dragOverSquare === squareName && validMoves.includes(squareName);
+
             return (
               <div
                 key={squareName}
                 id={`square-${squareName}`}
-                className={`relative flex items-center justify-center cursor-pointer transition-colors duration-150 select-none ${squareBg}`}
+                className={`relative flex items-center justify-center cursor-pointer transition-colors duration-150 select-none ${squareBg} ${
+                  isDraggedOverValid ? "ring-4 ring-emerald-500/80 ring-inset z-30 scale-[1.02] shadow-lg" : ""
+                }`}
                 onClick={() => handleSquareClick(squareName)}
+                onDragOver={(e) => {
+                  if (isInteractive) {
+                    e.preventDefault();
+                    if (dragOverSquare !== squareName) {
+                      setDragOverSquare(squareName);
+                    }
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverSquare === squareName) {
+                    setDragOverSquare(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  if (!isInteractive) return;
+                  e.preventDefault();
+                  setDragOverSquare(null);
+                  const fromSquare = e.dataTransfer.getData("text/plain");
+                  if (fromSquare && fromSquare !== squareName) {
+                    const pieceOnFrom = getPieceAt(fromSquare);
+                    if (pieceOnFrom && pieceOnFrom.color === playerColor) {
+                      const legalMoves = chess.moves({ square: fromSquare as Square, verbose: true });
+                      const destinations = legalMoves.map((m) => m.to);
+                      if (destinations.includes(squareName)) {
+                        const isPawn = pieceOnFrom.type === "p";
+                        const isPromotionRank =
+                          (pieceOnFrom.color === "w" && squareName.endsWith("8")) ||
+                          (pieceOnFrom.color === "b" && squareName.endsWith("1"));
+
+                        if (isPawn && isPromotionRank) {
+                          setPromotionPending({ from: fromSquare, to: squareName });
+                        } else {
+                          onMove(fromSquare, squareName);
+                        }
+                      }
+                    }
+                  }
+                  setSelectedSquare(null);
+                  setValidMoves([]);
+                }}
               >
                 {/* Chess Piece Rendering */}
                 {piece && (
@@ -146,43 +191,22 @@ export default function Chessboard({
                     referrerPolicy="no-referrer"
                     className={`w-[85%] h-[85%] z-10 transition-transform hover:scale-105 active:scale-95 ${
                       isInteractive && piece.color === playerColor
-                        ? "cursor-grab"
+                        ? "cursor-grab active:cursor-grabbing"
                         : "cursor-default"
                     }`}
                     draggable={isInteractive && piece.color === playerColor}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", squareName);
+                      setSelectedSquare(squareName);
+                      // Show valid destination dots instantly during drag
+                      const legalMoves = chess.moves({ square: squareName as Square, verbose: true });
+                      const destinations = legalMoves.map((m) => m.to);
+                      setValidMoves(destinations);
                     }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const fromSquare = e.dataTransfer.getData("text/plain");
-                      if (fromSquare && fromSquare !== squareName) {
-                        // Simulate a click on the starting square and then the destination square
-                        if (isInteractive) {
-                          const pieceOnFrom = getPieceAt(fromSquare);
-                          if (pieceOnFrom && pieceOnFrom.color === playerColor) {
-                            // First select the piece
-                            setSelectedSquare(fromSquare);
-                            const legalMoves = chess.moves({ square: fromSquare as Square, verbose: true });
-                            const destinations = legalMoves.map((m) => m.to);
-                            if (destinations.includes(squareName)) {
-                              const isPawn = pieceOnFrom.type === "p";
-                              const isPromotionRank =
-                                (pieceOnFrom.color === "w" && squareName.endsWith("8")) ||
-                                (pieceOnFrom.color === "b" && squareName.endsWith("1"));
-
-                              if (isPawn && isPromotionRank) {
-                                setPromotionPending({ from: fromSquare, to: squareName });
-                              } else {
-                                onMove(fromSquare, squareName);
-                              }
-                            }
-                          }
-                        }
-                      }
+                    onDragEnd={() => {
+                      setDragOverSquare(null);
+                      setSelectedSquare(null);
+                      setValidMoves([]);
                     }}
                   />
                 )}
@@ -192,10 +216,10 @@ export default function Chessboard({
                   <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
                     {piece ? (
                       // If there is an opponent piece, draw a nice ring indicating capture
-                      <div className="w-[80%] h-[80%] border-4 border-black/25 rounded-full" />
+                      <div className="w-[80%] h-[80%] border-4 border-emerald-500/50 rounded-full" />
                     ) : (
                       // For empty squares, draw a solid small dot
-                      <div className="w-[28%] h-[28%] bg-black/25 rounded-full" />
+                      <div className="w-[28%] h-[28%] bg-emerald-500/50 rounded-full" />
                     )}
                   </div>
                 )}
