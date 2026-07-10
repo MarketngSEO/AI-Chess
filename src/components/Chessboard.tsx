@@ -13,6 +13,10 @@ interface ChessboardProps {
   lastMove: { from: string; to: string } | null;
   kingSquare: string | null;
   onMove: (from: string, to: string, promotion?: string) => void;
+  // New board editor props
+  isEditorMode?: boolean;
+  onEditorFenChange?: (newFen: string) => void;
+  editorSelectedPiece?: { type: string; color: "w" | "b" } | "delete" | null;
 }
 
 export default function Chessboard({
@@ -22,6 +26,9 @@ export default function Chessboard({
   lastMove,
   kingSquare,
   onMove,
+  isEditorMode = false,
+  onEditorFenChange,
+  editorSelectedPiece = null,
 }: ChessboardProps) {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [validMoves, setValidMoves] = useState<string[]>([]);
@@ -31,6 +38,12 @@ export default function Chessboard({
     to: string;
   } | null>(null);
 
+  // Chess.com style right click highlights & arrows
+  const [highlightedSquares, setHighlightedSquares] = useState<Set<string>>(new Set());
+  const [arrows, setArrows] = useState<Array<{ from: string; to: string }>>([]);
+  const [rightClickStart, setRightClickStart] = useState<string | null>(null);
+  const [rightClickHover, setRightClickHover] = useState<string | null>(null);
+
   const chess = React.useMemo(() => new Chess(fen), [fen]);
 
   // Reset selection when FEN changes (e.g. new game loaded or computer moved)
@@ -38,6 +51,8 @@ export default function Chessboard({
     setSelectedSquare(null);
     setValidMoves([]);
     setPromotionPending(null);
+    setHighlightedSquares(new Set());
+    setArrows([]);
   }, [fen]);
 
   // Generate board ranks and files depending on board orientation (playerColor)
@@ -53,6 +68,37 @@ export default function Chessboard({
   };
 
   const handleSquareClick = (squareName: string) => {
+    // Left clicking any square clears right-click highlights/arrows
+    if (highlightedSquares.size > 0 || arrows.length > 0) {
+      setHighlightedSquares(new Set());
+      setArrows([]);
+    }
+
+    if (isEditorMode) {
+      if (!onEditorFenChange) return;
+      try {
+        const nextChess = new Chess(fen);
+        if (editorSelectedPiece === "delete") {
+          nextChess.remove(squareName as Square);
+        } else if (editorSelectedPiece) {
+          nextChess.put(
+            { type: editorSelectedPiece.type as any, color: editorSelectedPiece.color },
+            squareName as Square
+          );
+        } else {
+          // If no specific palette piece is selected, clicking a square toggles removal to keep it fluid
+          const existing = nextChess.get(squareName as Square);
+          if (existing) {
+            nextChess.remove(squareName as Square);
+          }
+        }
+        onEditorFenChange(nextChess.fen());
+      } catch (err) {
+        console.error("Failed to update board in editor mode", err);
+      }
+      return;
+    }
+
     if (!isInteractive) return;
     if (promotionPending) return;
 
@@ -106,8 +152,89 @@ export default function Chessboard({
     return `https://lichess1.org/assets/piece/cburnett/${pieceCode}.svg`;
   };
 
+  const getSquareCenterPercent = (squareName: string) => {
+    const file = squareName[0];
+    const rank = parseInt(squareName[1]);
+    const c = files.indexOf(file);
+    const r = ranks.indexOf(rank);
+    return {
+      x: ((c + 0.5) / 8) * 100,
+      y: ((r + 0.5) / 8) * 100,
+    };
+  };
+
+  const getArrowPoints = (from: string, to: string) => {
+    const p1 = getSquareCenterPercent(from);
+    const p2 = getSquareCenterPercent(to);
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    // Shorten the end point slightly so arrowhead is positioned beautifully
+    const shortenAmount = 3.8; // percent of board
+    const x2 = p2.x - (dx / len) * shortenAmount;
+    const y2 = p2.y - (dy / len) * shortenAmount;
+    return { x1: p1.x, y1: p1.y, x2, y2 };
+  };
+
+  const handleSquareMouseDown = (e: React.MouseEvent, squareName: string) => {
+    if (e.button === 2) {
+      e.preventDefault();
+      setRightClickStart(squareName);
+      setRightClickHover(squareName);
+    } else if (e.button === 0) {
+      // Left-click clears right-click annotations
+      if (highlightedSquares.size > 0 || arrows.length > 0) {
+        setHighlightedSquares(new Set());
+        setArrows([]);
+      }
+    }
+  };
+
+  const handleSquareMouseEnter = (squareName: string) => {
+    if (rightClickStart) {
+      setRightClickHover(squareName);
+    }
+  };
+
+  const handleBoardMouseUp = (e: React.MouseEvent) => {
+    if (e.button === 2) {
+      e.preventDefault();
+      if (rightClickStart) {
+        if (rightClickHover === rightClickStart) {
+          // Toggle square highlight
+          setHighlightedSquares((prev) => {
+            const next = new Set(prev);
+            if (next.has(rightClickStart)) {
+              next.delete(rightClickStart);
+            } else {
+              next.add(rightClickStart);
+            }
+            return next;
+          });
+        } else if (rightClickHover) {
+          // Toggle arrow
+          setArrows((prev) => {
+            const exists = prev.some((a) => a.from === rightClickStart && a.to === rightClickHover);
+            if (exists) {
+              return prev.filter((a) => !(a.from === rightClickStart && a.to === rightClickHover));
+            } else {
+              return [...prev, { from: rightClickStart, to: rightClickHover }];
+            }
+          });
+        }
+      }
+    }
+    setRightClickStart(null);
+    setRightClickHover(null);
+  };
+
   return (
-    <div className="relative w-full aspect-square max-w-[720px] mx-auto bg-neutral-900 rounded-lg shadow-2xl overflow-hidden border border-neutral-800">
+    <div
+      className="relative w-full aspect-square max-w-[720px] mx-auto bg-neutral-900 rounded-lg shadow-2xl overflow-hidden border border-neutral-800"
+      onMouseUp={handleBoardMouseUp}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* 8x8 Grid */}
       <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
         {ranks.map((rank) =>
@@ -121,6 +248,7 @@ export default function Chessboard({
             const isLastMoveSrc = lastMove?.from === squareName;
             const isLastMoveDst = lastMove?.to === squareName;
             const isCheck = kingSquare === squareName;
+            const isHighlighted = highlightedSquares.has(squareName);
 
             // Compute background color classes
             let squareBg = isDark ? "bg-emerald-800" : "bg-[#f0ebd8]";
@@ -142,8 +270,10 @@ export default function Chessboard({
                   isDraggedOverValid ? "ring-4 ring-emerald-500/80 ring-inset z-30 scale-[1.02] shadow-lg" : ""
                 }`}
                 onClick={() => handleSquareClick(squareName)}
+                onMouseDown={(e) => handleSquareMouseDown(e, squareName)}
+                onMouseEnter={() => handleSquareMouseEnter(squareName)}
                 onDragOver={(e) => {
-                  if (isInteractive) {
+                  if (isInteractive || isEditorMode) {
                     e.preventDefault();
                     if (dragOverSquare !== squareName) {
                       setDragOverSquare(squareName);
@@ -156,9 +286,39 @@ export default function Chessboard({
                   }
                 }}
                 onDrop={(e) => {
-                  if (!isInteractive) return;
                   e.preventDefault();
                   setDragOverSquare(null);
+
+                  if (isEditorMode && onEditorFenChange) {
+                    const fromSquare = e.dataTransfer.getData("text/plain");
+                    const pieceData = e.dataTransfer.getData("text/piece");
+
+                    try {
+                      const nextChess = new Chess(fen);
+                      if (pieceData) {
+                        const pieceObj = JSON.parse(pieceData);
+                        nextChess.put(
+                          { type: pieceObj.type, color: pieceObj.color },
+                          squareName as Square
+                        );
+                      } else if (fromSquare && fromSquare !== squareName) {
+                        const existing = nextChess.get(fromSquare as Square);
+                        if (existing) {
+                          nextChess.remove(fromSquare as Square);
+                          nextChess.put(
+                            { type: existing.type, color: existing.color },
+                            squareName as Square
+                          );
+                        }
+                      }
+                      onEditorFenChange(nextChess.fen());
+                    } catch (err) {
+                      console.error("Editor piece drop failed", err);
+                    }
+                    return;
+                  }
+
+                  if (!isInteractive) return;
                   const fromSquare = e.dataTransfer.getData("text/plain");
                   if (fromSquare && fromSquare !== squareName) {
                     const pieceOnFrom = getPieceAt(fromSquare);
@@ -190,25 +350,35 @@ export default function Chessboard({
                     alt={`${piece.color === "w" ? "White" : "Black"} ${piece.type}`}
                     referrerPolicy="no-referrer"
                     className={`w-[85%] h-[85%] z-10 transition-transform hover:scale-105 active:scale-95 ${
-                      isInteractive && piece.color === playerColor
+                      isEditorMode
+                        ? "cursor-grab active:cursor-grabbing"
+                        : isInteractive && piece.color === playerColor
                         ? "cursor-grab active:cursor-grabbing"
                         : "cursor-default"
                     }`}
-                    draggable={isInteractive && piece.color === playerColor}
+                    draggable={isEditorMode ? true : (isInteractive && piece.color === playerColor)}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", squareName);
-                      setSelectedSquare(squareName);
-                      // Show valid destination dots instantly during drag
-                      const legalMoves = chess.moves({ square: squareName as Square, verbose: true });
-                      const destinations = legalMoves.map((m) => m.to);
-                      setValidMoves(destinations);
+                      if (!isEditorMode) {
+                        setSelectedSquare(squareName);
+                        const legalMoves = chess.moves({ square: squareName as Square, verbose: true });
+                        const destinations = legalMoves.map((m) => m.to);
+                        setValidMoves(destinations);
+                      }
                     }}
                     onDragEnd={() => {
                       setDragOverSquare(null);
-                      setSelectedSquare(null);
-                      setValidMoves([]);
+                      if (!isEditorMode) {
+                        setSelectedSquare(null);
+                        setValidMoves([]);
+                      }
                     }}
                   />
+                )}
+
+                {/* Right click highlight */}
+                {isHighlighted && (
+                  <div className="absolute inset-0 bg-orange-500/35 z-20 pointer-events-none mix-blend-multiply" />
                 )}
 
                 {/* Valid Move Indicator Dots */}
@@ -228,7 +398,7 @@ export default function Chessboard({
                 {/* File labels along the bottom rank (rank 1 if White, rank 8 if Black) */}
                 {((playerColor === "w" && rank === 1) || (playerColor === "b" && rank === 8)) && (
                   <span
-                    className={`absolute bottom-0.5 right-1 text-[10px] font-bold select-none ${
+                    className={`absolute bottom-0.5 right-1 text-[10px] font-bold select-none z-30 ${
                       isDark ? "text-[#f0ebd8]/80" : "text-emerald-900/80"
                     }`}
                   >
@@ -239,7 +409,7 @@ export default function Chessboard({
                 {/* Rank labels along the left file (file 'a' if White, file 'h' if Black) */}
                 {((playerColor === "w" && file === "a") || (playerColor === "b" && file === "h")) && (
                   <span
-                    className={`absolute top-0.5 left-1 text-[10px] font-bold select-none ${
+                    className={`absolute top-0.5 left-1 text-[10px] font-bold select-none z-30 ${
                       isDark ? "text-[#f0ebd8]/80" : "text-emerald-900/80"
                     }`}
                   >
@@ -251,6 +421,59 @@ export default function Chessboard({
           })
         )}
       </div>
+
+      {/* SVG Arrows Overlay */}
+      <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full pointer-events-none z-40">
+        <defs>
+          <marker
+            id="arrowhead-orange"
+            markerWidth="6"
+            markerHeight="6"
+            refX="4.2"
+            refY="3"
+            orient="auto"
+          >
+            <path d="M0,1 L0,5 L5,3 Z" fill="#f6a23e" />
+          </marker>
+        </defs>
+
+        {/* Established Arrows */}
+        {arrows.map((arrow, idx) => {
+          const pts = getArrowPoints(arrow.from, arrow.to);
+          return (
+            <line
+              key={idx}
+              x1={pts.x1}
+              y1={pts.y1}
+              x2={pts.x2}
+              y2={pts.y2}
+              stroke="#f6a23e"
+              strokeWidth="1.6"
+              opacity="0.85"
+              markerEnd="url(#arrowhead-orange)"
+              strokeLinecap="round"
+            />
+          );
+        })}
+
+        {/* Live Active Drag Arrow */}
+        {rightClickStart && rightClickHover && rightClickStart !== rightClickHover && (() => {
+          const pts = getArrowPoints(rightClickStart, rightClickHover);
+          return (
+            <line
+              x1={pts.x1}
+              y1={pts.y1}
+              x2={pts.x2}
+              y2={pts.y2}
+              stroke="#f6a23e"
+              strokeWidth="1.6"
+              opacity="0.6"
+              markerEnd="url(#arrowhead-orange)"
+              strokeLinecap="round"
+            />
+          );
+        })()}
+      </svg>
 
       {/* Pawn Promotion Modal Overlay */}
       {promotionPending && (

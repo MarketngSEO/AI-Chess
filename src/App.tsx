@@ -58,6 +58,16 @@ export default function App() {
   const [customPlayAs, setCustomPlayAs] = useState<"w" | "b">("w");
   const [customDifficulty, setCustomDifficulty] = useState<Difficulty>(Difficulty.INTERMEDIATE);
   const [fenError, setFenError] = useState<string | null>(null);
+  const [isEditingLayout, setIsEditingLayout] = useState<boolean>(true);
+  const [editorSelectedPiece, setEditorSelectedPiece] = useState<{ type: string; color: "w" | "b" } | "delete" | null>(null);
+
+  useEffect(() => {
+    if (sidebarMode === "custom") {
+      setIsEditingLayout(true);
+    } else {
+      setIsEditingLayout(false);
+    }
+  }, [sidebarMode]);
 
   // Active chess game states
   const [game, setGame] = useState<Chess>(() => new Chess(ENDGAMES[0].fen));
@@ -245,23 +255,12 @@ export default function App() {
   // --- COMPUTER ENGINE LOGIC (STOCKFISH API) ---
 
   const getEngineDepth = (difficulty: Difficulty) => {
-    switch (difficulty) {
-      case Difficulty.BEGINNER:
-        return 5;
-      case Difficulty.INTERMEDIATE:
-        return 8;
-      case Difficulty.ADVANCED:
-        return 12;
-      case Difficulty.MASTER:
-        return 15;
-      default:
-        return 10;
-    }
+    return 15; // Stockfish is always set to maximum depth (full potential)
   };
 
   const fetchStockfishEvaluation = async (fen: string) => {
     try {
-      const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=10`;
+      const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=15`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
@@ -665,219 +664,377 @@ export default function App() {
               </div>
             </>
           ) : (
-            /* Custom Position Setup View */
-            <div className="flex-1 flex flex-col space-y-4">
-              <div className="px-1">
-                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider font-mono">Setup Custom Board</h3>
-                <p className="text-xs text-neutral-500">Practice custom layouts or enter FEN string</p>
-              </div>
+            /* Custom Position setup/active control logic */
+            !isEditingLayout ? (
+              /* Custom Position Active Gameplay Controls */
+              <div className="flex-1 flex flex-col space-y-4">
+                <div className="px-1">
+                  <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider font-mono">Custom Position</h3>
+                  <p className="text-xs text-neutral-500">Practice session against Stockfish</p>
+                </div>
 
-              {/* Presets Grid */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">Quick Presets</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { name: "👑 King + Pawn", fen: "4k3/8/8/8/4K3/4P3/8/8 w - - 0 1", turn: "w" as const, playAs: "w" as const },
-                    { name: "🗼 Lucena", fen: "1K1R4/1P6/8/8/3r4/8/8/k7 w - - 0 1", turn: "w" as const, playAs: "w" as const },
-                    { name: "🛡️ Philidor", fen: "8/8/r3k3/4P3/8/8/4RK2/8 b - - 0 1", turn: "b" as const, playAs: "b" as const },
-                    { name: "⚔️ Queen vs Rook", fen: "4k3/8/8/8/8/8/8/q3K1R1 w - - 0 1", turn: "b" as const, playAs: "b" as const },
-                    { name: "🏰 Standard Board", fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", turn: "w" as const, playAs: "w" as const },
-                    { name: "🎯 King vs King", fen: "4k3/8/8/8/4K3/8/8/8 w - - 0 1", turn: "w" as const, playAs: "w" as const },
-                  ].map((preset, idx) => (
-                    <button
-                      key={idx}
-                      id={`preset-btn-${idx}`}
-                      type="button"
-                      className="text-left p-2 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-emerald-800 hover:bg-neutral-900/80 transition-all text-xs"
-                      onClick={() => {
-                        setCustomFen(preset.fen);
-                        setCustomTurn(preset.turn);
-                        setCustomPlayAs(preset.playAs);
+                <div className="bg-emerald-950/40 p-4 rounded-xl border border-emerald-900/60 text-center space-y-3">
+                  <div className="mx-auto w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400">
+                    <Activity className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h4 className="text-xs font-bold text-emerald-400 font-mono uppercase tracking-wider">Practice Session Active</h4>
+                  <p className="text-xs text-neutral-300">
+                    You are currently playing your custom position against Stockfish at full potential!
+                  </p>
+                  <div className="text-[10px] font-mono text-neutral-400 bg-neutral-950/60 p-2 rounded-lg border border-neutral-900 break-all select-all">
+                    {boardFen}
+                  </div>
+                </div>
+
+                <button
+                  id="modify-layout-btn"
+                  type="button"
+                  className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow border border-neutral-700 transition-all flex items-center justify-center gap-2 animate-fade-in"
+                  onClick={() => {
+                    setIsEditingLayout(true);
+                    setGameStatus("playing");
+                    setCustomFen(boardFen);
+                  }}
+                >
+                  <Wrench className="w-3.5 h-3.5 text-neutral-400" />
+                  <span>Modify Layout & Tweak</span>
+                </button>
+              </div>
+            ) : (
+              /* Custom Position Setup / Editor Panel */
+              <div className="flex-1 flex flex-col space-y-4 animate-fade-in">
+                <div className="px-1">
+                  <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider font-mono">Setup Custom Board</h3>
+                  <p className="text-xs text-neutral-500">Practice custom layouts or enter FEN string</p>
+                </div>
+
+                {/* Interactive Piece Palette for Board Editor */}
+                <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 space-y-3 shadow-inner">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono">
+                      🎨 Visual Board Palette
+                    </span>
+                    <span className="text-[9px] text-neutral-500 font-mono">
+                      Click to stamp / Drag to drop
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* White Pieces Row */}
+                    <div className="flex items-center gap-1.5 justify-between bg-neutral-900/55 p-1.5 rounded-lg border border-neutral-900">
+                      <span className="text-[9px] font-mono text-neutral-400 w-9 text-center uppercase">White</span>
+                      <div className="flex gap-1 flex-1 justify-end">
+                        {["p", "n", "b", "r", "q", "k"].map((type) => {
+                          const pieceUrl = `https://lichess1.org/assets/piece/cburnett/w${type.toUpperCase()}.svg`;
+                          const isSelected = editorSelectedPiece !== null && typeof editorSelectedPiece === "object" && editorSelectedPiece.type === type && editorSelectedPiece.color === "w";
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              className={`w-8 h-8 rounded p-0.5 border transition-all ${
+                                isSelected
+                                  ? "bg-emerald-600/30 border-emerald-500 scale-110 shadow"
+                                  : "bg-neutral-900 border-neutral-800 hover:bg-neutral-800 hover:border-neutral-700"
+                              }`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setEditorSelectedPiece(null);
+                                } else {
+                                  setEditorSelectedPiece({ type, color: "w" });
+                                }
+                              }}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/piece", JSON.stringify({ type, color: "w" }));
+                              }}
+                            >
+                              <img src={pieceUrl} alt={`White ${type}`} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Black Pieces Row */}
+                    <div className="flex items-center gap-1.5 justify-between bg-neutral-900/55 p-1.5 rounded-lg border border-neutral-900">
+                      <span className="text-[9px] font-mono text-neutral-400 w-9 text-center uppercase">Black</span>
+                      <div className="flex gap-1 flex-1 justify-end">
+                        {["p", "n", "b", "r", "q", "k"].map((type) => {
+                          const pieceUrl = `https://lichess1.org/assets/piece/cburnett/b${type.toUpperCase()}.svg`;
+                          const isSelected = editorSelectedPiece !== null && typeof editorSelectedPiece === "object" && editorSelectedPiece.type === type && editorSelectedPiece.color === "b";
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              className={`w-8 h-8 rounded p-0.5 border transition-all ${
+                                isSelected
+                                  ? "bg-emerald-600/30 border-emerald-500 scale-110 shadow"
+                                  : "bg-neutral-900 border-neutral-800 hover:bg-neutral-800 hover:border-neutral-700"
+                              }`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setEditorSelectedPiece(null);
+                                } else {
+                                  setEditorSelectedPiece({ type, color: "b" });
+                                }
+                              }}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/piece", JSON.stringify({ type, color: "b" }));
+                              }}
+                            >
+                              <img src={pieceUrl} alt={`Black ${type}`} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Tools Row */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        className={`flex-1 py-1.5 text-[10px] font-mono font-bold rounded-lg border transition-all flex items-center justify-center gap-1.5 ${
+                          editorSelectedPiece === "delete"
+                            ? "bg-red-950/40 text-red-400 border-red-500 shadow"
+                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-200"
+                        }`}
+                        onClick={() => {
+                          if (editorSelectedPiece === "delete") {
+                            setEditorSelectedPiece(null);
+                          } else {
+                            setEditorSelectedPiece("delete");
+                          }
+                        }}
+                      >
+                        <span>🧽</span>
+                        <span>Eraser Tool</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="flex-1 py-1.5 text-[10px] font-mono font-bold rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-200 transition-all flex items-center justify-center gap-1.5"
+                        onClick={() => {
+                          setCustomFen("4k3/8/8/8/4K3/8/8/8 w - - 0 1");
+                          setEditorSelectedPiece(null);
+                          setFenError(null);
+                        }}
+                      >
+                        <span>🧹</span>
+                        <span>Clear Board</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Presets Grid */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">Quick Presets</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { name: "👑 King + Pawn", fen: "4k3/8/8/8/4K3/4P3/8/8 w - - 0 1", turn: "w" as const, playAs: "w" as const },
+                      { name: "🗼 Lucena", fen: "1K1R4/1P6/8/8/3r4/8/8/k7 w - - 0 1", turn: "w" as const, playAs: "w" as const },
+                      { name: "🛡️ Philidor", fen: "8/8/r3k3/4P3/8/8/4RK2/8 b - - 0 1", turn: "b" as const, playAs: "b" as const },
+                      { name: "⚔️ Queen vs Rook", fen: "4k3/8/8/8/8/8/8/q3K1R1 w - - 0 1", turn: "b" as const, playAs: "b" as const },
+                      { name: "🏰 Standard Board", fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", turn: "w" as const, playAs: "w" as const },
+                      { name: "🎯 King vs King", fen: "4k3/8/8/8/4K3/8/8/8 w - - 0 1", turn: "w" as const, playAs: "w" as const },
+                    ].map((preset, idx) => (
+                      <button
+                        key={idx}
+                        id={`preset-btn-${idx}`}
+                        type="button"
+                        className="text-left p-2 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-emerald-800 hover:bg-neutral-900/80 transition-all text-xs"
+                        onClick={() => {
+                          setCustomFen(preset.fen);
+                          setCustomTurn(preset.turn);
+                          setCustomPlayAs(preset.playAs);
+                          setFenError(null);
+                        }}
+                      >
+                        <div className="font-semibold text-neutral-200">{preset.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* FEN input box */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
+                    FEN Position String
+                  </label>
+                  <textarea
+                    id="fen-textarea"
+                    value={customFen}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomFen(val);
+                      try {
+                        new Chess(val);
                         setFenError(null);
+                        // Auto-sync turn if FEN is complete
+                        const parts = val.trim().split(/\s+/);
+                        if (parts.length > 1) {
+                          const t = parts[1];
+                          if (t === "w" || t === "b") {
+                            setCustomTurn(t as "w" | "b");
+                          }
+                        }
+                      } catch (err) {
+                        setFenError("Invalid chess position layout.");
+                      }
+                    }}
+                    rows={2}
+                    className={`w-full text-xs font-mono bg-neutral-900 border ${
+                      fenError ? "border-red-900 focus:border-red-500 focus:ring-1 focus:ring-red-500" : "border-neutral-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    } rounded-lg p-2.5 text-neutral-200 placeholder-neutral-600 focus:outline-none resize-none`}
+                    placeholder="Paste FEN string here..."
+                  />
+                  {fenError ? (
+                    <p className="text-[10px] text-red-400 px-1 font-mono">{fenError}</p>
+                  ) : (
+                    <p className="text-[10px] text-neutral-500 px-1 font-mono">Position format is validated</p>
+                  )}
+                </div>
+
+                {/* Whose turn to move */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
+                    Active Turn (Next Move)
+                  </span>
+                  <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800">
+                    <button
+                      id="turn-white-btn"
+                      type="button"
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        customTurn === "w"
+                          ? "bg-neutral-100 text-neutral-900 shadow"
+                          : "text-neutral-400 hover:text-neutral-200"
+                      }`}
+                      onClick={() => {
+                        setCustomTurn("w");
+                        const parts = customFen.trim().split(/\s+/);
+                        if (parts.length > 1) {
+                          parts[1] = "w";
+                          setCustomFen(parts.join(" "));
+                        }
                       }}
                     >
-                      <div className="font-semibold text-neutral-200">{preset.name}</div>
+                      White to Move
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* FEN input box */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
-                  FEN Position String
-                </label>
-                <textarea
-                  id="fen-textarea"
-                  value={customFen}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCustomFen(val);
-                    try {
-                      new Chess(val);
-                      setFenError(null);
-                      // Auto-sync turn if FEN is complete
-                      const parts = val.trim().split(/\s+/);
-                      if (parts.length > 1) {
-                        const t = parts[1];
-                        if (t === "w" || t === "b") {
-                          setCustomTurn(t as "w" | "b");
+                    <button
+                      id="turn-black-btn"
+                      type="button"
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        customTurn === "b"
+                          ? "bg-neutral-100 text-neutral-900 shadow"
+                          : "text-neutral-400 hover:text-neutral-200"
+                      }`}
+                      onClick={() => {
+                        setCustomTurn("b");
+                        const parts = customFen.trim().split(/\s+/);
+                        if (parts.length > 1) {
+                          parts[1] = "b";
+                          setCustomFen(parts.join(" "));
                         }
+                      }}
+                    >
+                      Black to Move
+                    </button>
+                  </div>
+                </div>
+
+                {/* Side the user plays */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
+                    You Play As
+                  </span>
+                  <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800">
+                    <button
+                      id="play-as-white-btn"
+                      type="button"
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        customPlayAs === "w"
+                          ? "bg-emerald-600 text-neutral-50 shadow-md"
+                          : "text-neutral-400 hover:text-neutral-200"
+                      }`}
+                      onClick={() => setCustomPlayAs("w")}
+                    >
+                      White
+                    </button>
+                    <button
+                      id="play-as-black-btn"
+                      type="button"
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        customPlayAs === "b"
+                          ? "bg-emerald-600 text-neutral-50 shadow-md"
+                          : "text-neutral-400 hover:text-neutral-200"
+                      }`}
+                      onClick={() => setCustomPlayAs("b")}
+                    >
+                      Black
+                    </button>
+                  </div>
+                </div>
+
+                {/* Computer engine strength */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
+                    Computer Strength
+                  </span>
+                  <select
+                    id="custom-difficulty-select"
+                    value={customDifficulty}
+                    onChange={(e) => setCustomDifficulty(e.target.value as Difficulty)}
+                    className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value={Difficulty.BEGINNER}>Beginner (Stockfish Depth 5)</option>
+                    <option value={Difficulty.INTERMEDIATE}>Intermediate (Stockfish Depth 8)</option>
+                    <option value={Difficulty.ADVANCED}>Advanced (Stockfish Depth 12)</option>
+                    <option value={Difficulty.MASTER}>Master (Stockfish Depth 15)</option>
+                  </select>
+                </div>
+
+                {/* Launch custom button */}
+                <button
+                  id="start-custom-practice-btn"
+                  type="button"
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 mt-auto"
+                  onClick={() => {
+                    try {
+                      const testGame = new Chess(customFen);
+                      // Ensure turn match
+                      const parts = customFen.trim().split(/\s+/);
+                      if (parts.length > 1) {
+                        parts[1] = customTurn;
                       }
-                    } catch (err) {
-                      setFenError("Invalid chess position layout.");
+                      const finalFen = parts.join(" ");
+
+                      const dynamicEndgame: ChessEndgame = {
+                        id: `custom_${Date.now()}`,
+                        name: "Custom Practice Position",
+                        difficulty: customDifficulty,
+                        fen: finalFen,
+                        playerColor: customPlayAs,
+                        description: "A custom chess position configured for tactical training.",
+                        objective: `Play this position as ${customPlayAs === "w" ? "White" : "Black"}. ${
+                          customTurn === customPlayAs ? "You have the first move." : "The Computer moves first."
+                        }`,
+                        theoreticalPlan: "Analyze the position and calculate deep lines. Get live commentary and evaluations from Grandmaster Coach Garry.",
+                        hint: "Evaluate candidate moves carefully, optimize piece coordination, and aim to realize your tactical objective!"
+                      };
+
+                      loadEndgame(dynamicEndgame);
+                      setIsEditingLayout(false);
+                      setEditorSelectedPiece(null);
+                    } catch (e) {
+                      setFenError("Please enter a valid chess FEN position before practicing.");
                     }
                   }}
-                  rows={3}
-                  className={`w-full text-xs font-mono bg-neutral-900 border ${
-                    fenError ? "border-red-900 focus:border-red-500 focus:ring-1 focus:ring-red-500" : "border-neutral-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                  } rounded-lg p-2.5 text-neutral-200 placeholder-neutral-600 focus:outline-none resize-none`}
-                  placeholder="Paste FEN string here..."
-                />
-                {fenError ? (
-                  <p className="text-[10px] text-red-400 px-1 font-mono">{fenError}</p>
-                ) : (
-                  <p className="text-[10px] text-neutral-500 px-1 font-mono">Position format is validated</p>
-                )}
-              </div>
-
-              {/* Whose turn to move */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
-                  Active Turn (Next Move)
-                </span>
-                <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800">
-                  <button
-                    id="turn-white-btn"
-                    type="button"
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      customTurn === "w"
-                        ? "bg-neutral-100 text-neutral-900 shadow"
-                        : "text-neutral-400 hover:text-neutral-200"
-                    }`}
-                    onClick={() => {
-                      setCustomTurn("w");
-                      const parts = customFen.trim().split(/\s+/);
-                      if (parts.length > 1) {
-                        parts[1] = "w";
-                        setCustomFen(parts.join(" "));
-                      }
-                    }}
-                  >
-                    White to Move
-                  </button>
-                  <button
-                    id="turn-black-btn"
-                    type="button"
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      customTurn === "b"
-                        ? "bg-neutral-100 text-neutral-900 shadow"
-                        : "text-neutral-400 hover:text-neutral-200"
-                    }`}
-                    onClick={() => {
-                      setCustomTurn("b");
-                      const parts = customFen.trim().split(/\s+/);
-                      if (parts.length > 1) {
-                        parts[1] = "b";
-                        setCustomFen(parts.join(" "));
-                      }
-                    }}
-                  >
-                    Black to Move
-                  </button>
-                </div>
-              </div>
-
-              {/* Side the user plays */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
-                  You Play As
-                </span>
-                <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800">
-                  <button
-                    id="play-as-white-btn"
-                    type="button"
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      customPlayAs === "w"
-                        ? "bg-emerald-600 text-neutral-50 shadow-md"
-                        : "text-neutral-400 hover:text-neutral-200"
-                    }`}
-                    onClick={() => setCustomPlayAs("w")}
-                  >
-                    White
-                  </button>
-                  <button
-                    id="play-as-black-btn"
-                    type="button"
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
-                      customPlayAs === "b"
-                        ? "bg-emerald-600 text-neutral-50 shadow-md"
-                        : "text-neutral-400 hover:text-neutral-200"
-                    }`}
-                    onClick={() => setCustomPlayAs("b")}
-                  >
-                    Black
-                  </button>
-                </div>
-              </div>
-
-              {/* Computer engine strength */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
-                  Computer Strength
-                </span>
-                <select
-                  id="custom-difficulty-select"
-                  value={customDifficulty}
-                  onChange={(e) => setCustomDifficulty(e.target.value as Difficulty)}
-                  className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-200 focus:outline-none focus:border-emerald-500"
                 >
-                  <option value={Difficulty.BEGINNER}>Beginner (Stockfish Depth 5)</option>
-                  <option value={Difficulty.INTERMEDIATE}>Intermediate (Stockfish Depth 8)</option>
-                  <option value={Difficulty.ADVANCED}>Advanced (Stockfish Depth 12)</option>
-                  <option value={Difficulty.MASTER}>Master (Stockfish Depth 15)</option>
-                </select>
+                  <Wrench className="w-4 h-4" />
+                  <span>Start Practice Session</span>
+                </button>
               </div>
-
-              {/* Launch custom button */}
-              <button
-                id="start-custom-practice-btn"
-                type="button"
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 mt-auto"
-                onClick={() => {
-                  try {
-                    const testGame = new Chess(customFen);
-                    // Ensure turn match
-                    const parts = customFen.trim().split(/\s+/);
-                    if (parts.length > 1) {
-                      parts[1] = customTurn;
-                    }
-                    const finalFen = parts.join(" ");
-
-                    const dynamicEndgame: ChessEndgame = {
-                      id: `custom_${Date.now()}`,
-                      name: "Custom Practice Position",
-                      difficulty: customDifficulty,
-                      fen: finalFen,
-                      playerColor: customPlayAs,
-                      description: "A custom chess position configured for tactical training.",
-                      objective: `Play this position as ${customPlayAs === "w" ? "White" : "Black"}. ${
-                        customTurn === customPlayAs ? "You have the first move." : "The Computer moves first."
-                      }`,
-                      theoreticalPlan: "Analyze the position and calculate deep lines. Get live commentary and evaluations from Grandmaster Coach Garry.",
-                      hint: "Evaluate candidate moves carefully, optimize piece coordination, and aim to realize your tactical objective!"
-                    };
-
-                    loadEndgame(dynamicEndgame);
-                  } catch (e) {
-                    setFenError("Please enter a valid chess FEN position before practicing.");
-                  }
-                }}
-              >
-                <Wrench className="w-4 h-4" />
-                <span>Start Practice Session</span>
-              </button>
-            </div>
+            )
           )}
 
           <div className="mt-auto pt-6 border-t border-neutral-900 text-center text-[10px] text-neutral-500 font-mono">
@@ -965,13 +1122,31 @@ export default function App() {
               {/* The Chess Board */}
               <div className="flex-1 relative">
                 <Chessboard
-                  fen={boardFen}
-                  playerColor={selectedEndgame.playerColor}
-                  isInteractive={gameStatus === "playing" && !isThinking}
-                  lastMove={lastMove}
-                  kingSquare={kingInCheckSquare}
+                  fen={sidebarMode === "custom" && isEditingLayout ? customFen : boardFen}
+                  playerColor={sidebarMode === "custom" && isEditingLayout ? customPlayAs : selectedEndgame.playerColor}
+                  isInteractive={gameStatus === "playing" && !isThinking && !isEditingLayout}
+                  lastMove={isEditingLayout ? null : lastMove}
+                  kingSquare={isEditingLayout ? null : kingInCheckSquare}
                   onMove={handlePlayerMove}
+                  isEditorMode={sidebarMode === "custom" && isEditingLayout}
+                  editorSelectedPiece={editorSelectedPiece}
+                  onEditorFenChange={(newFen) => {
+                    setCustomFen(newFen);
+                    try {
+                      new Chess(newFen);
+                      setFenError(null);
+                    } catch (e) {
+                      setFenError("Invalid chess position layout.");
+                    }
+                  }}
                 />
+
+                {sidebarMode === "custom" && isEditingLayout && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-emerald-600/90 text-white font-mono text-[10px] uppercase font-bold tracking-wider px-3 py-1 rounded-full shadow border border-emerald-500 backdrop-blur flex items-center gap-1.5 animate-pulse">
+                    <Wrench className="w-3 h-3" />
+                    <span>Setup Mode - Edit Board</span>
+                  </div>
+                )}
 
                 {/* Game over full-board overlays */}
                 <AnimatePresence>
