@@ -39,6 +39,24 @@ import Chessboard from "./components/Chessboard";
 // Local storage key names
 const STATS_STORAGE_KEY = "chess_endgame_trainer_stats";
 
+// Helper to get the hypothetical chess state after applying a series of player-only premoves
+const getHypotheticalChess = (baseFen: string, premoveList: Array<{ from: string; to: string; promotion?: string }>, playerColor: "w" | "b") => {
+  let currentChess = new Chess(baseFen);
+  for (const pm of premoveList) {
+    try {
+      if (currentChess.turn() !== playerColor) {
+        const parts = currentChess.fen().split(" ");
+        parts[1] = playerColor;
+        currentChess = new Chess(parts.join(" "));
+      }
+      currentChess.move({ from: pm.from, to: pm.to, promotion: pm.promotion || "q" });
+    } catch (e) {
+      console.warn("Could not apply hypothetical premove", pm, e);
+    }
+  }
+  return currentChess;
+};
+
 export default function App() {
   // --- STATE DECLARATIONS ---
 
@@ -61,6 +79,9 @@ export default function App() {
   const [isEditingLayout, setIsEditingLayout] = useState<boolean>(true);
   const [editorSelectedPiece, setEditorSelectedPiece] = useState<{ type: string; color: "w" | "b" } | "delete" | null>(null);
 
+  // Chess Premoves state
+  const [premoves, setPremoves] = useState<Array<{ from: string; to: string; promotion?: string }>>([]);
+
   useEffect(() => {
     if (sidebarMode === "custom") {
       setIsEditingLayout(true);
@@ -72,6 +93,17 @@ export default function App() {
   // Active chess game states
   const [game, setGame] = useState<Chess>(() => new Chess(ENDGAMES[0].fen));
   const [boardFen, setBoardFen] = useState<string>(ENDGAMES[0].fen);
+
+  const displayFen = useMemo(() => {
+    if (sidebarMode === "custom" && isEditingLayout) {
+      return customFen;
+    }
+    if (premoves.length > 0) {
+      const hypChess = getHypotheticalChess(boardFen, premoves, selectedEndgame.playerColor);
+      return hypChess.fen();
+    }
+    return boardFen;
+  }, [sidebarMode, isEditingLayout, customFen, premoves, boardFen, selectedEndgame.playerColor]);
   const [history, setHistory] = useState<PlayHistoryItem[]>([]);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [kingInCheckSquare, setKingInCheckSquare] = useState<string | null>(null);
@@ -165,6 +197,7 @@ export default function App() {
     setEvaluation(endgame.playerColor === "w" ? 1.5 : -1.5); // base score
     setForcedMate(null);
     setIsThinking(false);
+    setPremoves([]);
 
     // Auto-flip board to match player color
     setIsFlipped(endgame.playerColor === "b");
@@ -386,6 +419,75 @@ export default function App() {
       }
     }
   }, [boardFen, selectedEndgame.id, gameStatus, selectedEndgame.playerColor, isThinking, game, makeComputerMove]);
+
+  // Process queued premoves when it is the player's turn and computer is not thinking
+  useEffect(() => {
+    if (gameStatus === "playing" && !isThinking && premoves.length > 0) {
+      const activeTurn = game.turn();
+      if (activeTurn === selectedEndgame.playerColor) {
+        const nextPremoves = [...premoves];
+        const firstPremove = nextPremoves.shift()!;
+        setPremoves(nextPremoves);
+
+        const playerGame = new Chess(game.fen());
+        try {
+          const executed = playerGame.move({
+            from: firstPremove.from,
+            to: firstPremove.to,
+            promotion: firstPremove.promotion || "q"
+          });
+
+          if (executed) {
+            // Apply the move!
+            setGame(playerGame);
+            setBoardFen(playerGame.fen());
+            setLastMove({ from: firstPremove.from, to: firstPremove.to });
+
+            // Record history
+            const historyItem: PlayHistoryItem = {
+              san: executed.san,
+              from: firstPremove.from,
+              to: firstPremove.to,
+              color: executed.color,
+              fenAfter: playerGame.fen(),
+              timestamp: Date.now(),
+            };
+            setHistory((prev) => [...prev, historyItem]);
+
+            // Check game over
+            const isOver = checkGameOver(playerGame);
+            if (!isOver) {
+              fetchStockfishEvaluation(playerGame.fen());
+              // Trigger computer response
+              setTimeout(() => {
+                makeComputerMove(playerGame);
+              }, 400);
+            }
+          } else {
+            setPremoves([]);
+          }
+        } catch (err) {
+          console.warn("Executed illegal premove, clearing premove queue:", err);
+          setPremoves([]);
+        }
+      }
+    }
+  }, [boardFen, isThinking, game, premoves, gameStatus, selectedEndgame.playerColor, makeComputerMove, checkGameOver]);
+
+  // Clear premoves when the game ends
+  useEffect(() => {
+    if (gameStatus !== "playing") {
+      setPremoves([]);
+    }
+  }, [gameStatus]);
+
+  const handlePremove = (from: string, to: string, promotion?: string) => {
+    setPremoves((prev) => [...prev, { from, to, promotion }]);
+  };
+
+  const handleClearPremoves = () => {
+    setPremoves([]);
+  };
 
   // --- PLAYER ACTIONS ---
 
@@ -980,17 +1082,13 @@ export default function App() {
                   <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider font-mono block px-1">
                     Computer Strength
                   </span>
-                  <select
-                    id="custom-difficulty-select"
-                    value={customDifficulty}
-                    onChange={(e) => setCustomDifficulty(e.target.value as Difficulty)}
-                    className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-200 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value={Difficulty.BEGINNER}>Beginner (Stockfish Depth 5)</option>
-                    <option value={Difficulty.INTERMEDIATE}>Intermediate (Stockfish Depth 8)</option>
-                    <option value={Difficulty.ADVANCED}>Advanced (Stockfish Depth 12)</option>
-                    <option value={Difficulty.MASTER}>Master (Stockfish Depth 15)</option>
-                  </select>
+                  <div className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-3 text-neutral-200 flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+                    <div>
+                      <span className="font-bold text-neutral-100 block">Stockfish Engine Max Strength</span>
+                      <span className="text-[10px] text-neutral-400">Plays at full potential (Depth 15, optimal play)</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Launch custom button */}
@@ -1122,7 +1220,8 @@ export default function App() {
               {/* The Chess Board */}
               <div className="flex-1 relative">
                 <Chessboard
-                  fen={sidebarMode === "custom" && isEditingLayout ? customFen : boardFen}
+                  fen={displayFen}
+                  actualFen={boardFen}
                   playerColor={sidebarMode === "custom" && isEditingLayout ? customPlayAs : selectedEndgame.playerColor}
                   isInteractive={gameStatus === "playing" && !isThinking && !isEditingLayout}
                   lastMove={isEditingLayout ? null : lastMove}
@@ -1139,12 +1238,29 @@ export default function App() {
                       setFenError("Invalid chess position layout.");
                     }
                   }}
+                  premoves={premoves}
+                  onPremove={handlePremove}
+                  onClearPremoves={handleClearPremoves}
                 />
 
                 {sidebarMode === "custom" && isEditingLayout && (
                   <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-emerald-600/90 text-white font-mono text-[10px] uppercase font-bold tracking-wider px-3 py-1 rounded-full shadow border border-emerald-500 backdrop-blur flex items-center gap-1.5 animate-pulse">
                     <Wrench className="w-3 h-3" />
                     <span>Setup Mode - Edit Board</span>
+                  </div>
+                )}
+
+                {premoves.length > 0 && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-red-600/95 text-white font-mono text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 rounded-full shadow border border-red-500 backdrop-blur flex items-center gap-2">
+                    <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                    <span>{premoves.length} Premove{premoves.length > 1 ? "s" : ""} Queued</span>
+                    <button
+                      type="button"
+                      onClick={handleClearPremoves}
+                      className="ml-1 px-1.5 py-0.5 bg-red-800 hover:bg-red-700 active:bg-red-900 rounded text-[9px] font-bold border border-red-400 transition-colors cursor-pointer"
+                    >
+                      Clear
+                    </button>
                   </div>
                 )}
 
