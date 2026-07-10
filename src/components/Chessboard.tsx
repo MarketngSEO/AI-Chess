@@ -563,7 +563,7 @@ export default function Chessboard({
 
                 {/* Right click highlight */}
                 {isHighlighted && (
-                  <div className="absolute inset-0 bg-orange-500/35 z-20 pointer-events-none mix-blend-multiply" />
+                  <div className="absolute inset-0 bg-amber-400/40 z-20 pointer-events-none" />
                 )}
 
                 {/* Valid Move Indicator Dots */}
@@ -632,24 +632,7 @@ export default function Chessboard({
           </marker>
         </defs>
 
-        {/* Premoves Arrows */}
-        {premoves.map((pm, idx) => {
-          const pts = getArrowPoints(pm.from, pm.to);
-          return (
-            <line
-              key={`pm-${idx}`}
-              x1={pts.x1}
-              y1={pts.y1}
-              x2={pts.x2}
-              y2={pts.y2}
-              stroke="#ef4444"
-              strokeWidth="1.6"
-              opacity="0.85"
-              markerEnd="url(#arrowhead-red)"
-              strokeLinecap="round"
-            />
-          );
-        })}
+
 
         {/* Established Arrows */}
         {arrows.map((arrow, idx) => {

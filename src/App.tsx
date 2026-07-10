@@ -1279,19 +1279,7 @@ export default function App() {
                   </div>
                 )}
 
-                {premoves.length > 0 && (
-                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-red-600/95 text-white font-mono text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 rounded-full shadow border border-red-500 backdrop-blur flex items-center gap-2">
-                    <div className="w-2 h-2 bg-white rounded-full animate-ping" />
-                    <span>{premoves.length} Premove{premoves.length > 1 ? "s" : ""} Queued</span>
-                    <button
-                      type="button"
-                      onClick={handleClearPremoves}
-                      className="ml-1 px-1.5 py-0.5 bg-red-800 hover:bg-red-700 active:bg-red-900 rounded text-[9px] font-bold border border-red-400 transition-colors cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
+
 
                 {/* Game over full-board overlays */}
                 <AnimatePresence>
