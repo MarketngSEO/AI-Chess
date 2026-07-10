@@ -108,6 +108,7 @@ export default function App() {
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [kingInCheckSquare, setKingInCheckSquare] = useState<string | null>(null);
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
+  const [boardTheme, setBoardTheme] = useState<"emerald" | "blue" | "charcoal" | "indigo">("emerald");
 
   // Status and evaluation states
   const [gameStatus, setGameStatus] = useState<
@@ -407,7 +408,10 @@ export default function App() {
             const to = uciMove.substring(2, 4);
             const promo = uciMove.length === 5 ? uciMove.substring(4, 5) : undefined;
 
-            const nextGame = getGameWithHistory(selectedEndgame.fen, history);
+            const nextGame = new Chess(selectedEndgame.fen);
+            for (const m of chessInstance.history({ verbose: true })) {
+              nextGame.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+            }
             const executedMove = nextGame.move({ from, to, promotion: promo });
 
             if (executedMove) {
@@ -449,7 +453,10 @@ export default function App() {
         console.error("Stockfish API call failed, invoking client fallback", error);
 
         // FALLBACK: Choose a random legal move so the board never locks
-        const nextGame = getGameWithHistory(selectedEndgame.fen, history);
+        const nextGame = new Chess(selectedEndgame.fen);
+        for (const m of chessInstance.history({ verbose: true })) {
+          nextGame.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+        }
         const moves = nextGame.moves({ verbose: true });
         if (moves.length > 0) {
           // Try to prioritize checks or captures to feel 'semi-intelligent'
@@ -482,7 +489,7 @@ export default function App() {
         setIsThinking(false);
       }
     },
-    [selectedEndgame, history, checkGameOver, getGameWithHistory]
+    [selectedEndgame, checkGameOver]
   );
 
   // Trigger computer move if it is their turn on load or custom setup
@@ -507,7 +514,10 @@ export default function App() {
         const firstPremove = nextPremoves.shift()!;
         setPremoves(nextPremoves);
 
-        const playerGame = getGameWithHistory(selectedEndgame.fen, history);
+        const playerGame = new Chess(selectedEndgame.fen);
+        for (const m of game.history({ verbose: true })) {
+          playerGame.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+        }
         try {
           const executed = playerGame.move({
             from: firstPremove.from,
@@ -551,7 +561,7 @@ export default function App() {
         }
       }
     }
-  }, [boardFen, isThinking, game, premoves, gameStatus, selectedEndgame.playerColor, history, makeComputerMove, checkGameOver, getGameWithHistory]);
+  }, [boardFen, isThinking, game, premoves, gameStatus, selectedEndgame.playerColor, makeComputerMove, checkGameOver]);
 
   // Clear premoves when the game ends
   useEffect(() => {
@@ -573,7 +583,10 @@ export default function App() {
   const handlePlayerMove = (from: string, to: string, promotion?: string) => {
     if (gameStatus !== "playing" || isThinking) return;
 
-    const nextGame = getGameWithHistory(selectedEndgame.fen, history);
+    const nextGame = new Chess(selectedEndgame.fen);
+    for (const m of game.history({ verbose: true })) {
+      nextGame.move({ from: m.from, to: m.to, promotion: m.promotion || "q" });
+    }
     try {
       const executedMove = nextGame.move({ from, to, promotion: promotion || "q" });
 
@@ -1305,7 +1318,7 @@ export default function App() {
 
               {/* The Chess Board */}
               <div className="flex-1 relative">
-                <Chessboard
+                 <Chessboard
                   fen={displayFen}
                   actualFen={boardFen}
                   playerColor={sidebarMode === "custom" && isEditingLayout ? customPlayAs : selectedEndgame.playerColor}
@@ -1328,6 +1341,7 @@ export default function App() {
                   onPremove={handlePremove}
                   onClearPremoves={handleClearPremoves}
                   isFlipped={isFlipped}
+                  boardTheme={boardTheme}
                 />
 
                 {sidebarMode === "custom" && isEditingLayout && (
@@ -1424,26 +1438,48 @@ export default function App() {
             </div>
 
             {/* Chessboard Actions / Settings */}
-            <div className="w-full grid grid-cols-3 gap-3">
-              <button
-                id="ctrl-restart"
-                className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 active:scale-95 transition-all text-sm font-semibold hover:border-neutral-700 text-neutral-200"
-                onClick={() => loadEndgame(selectedEndgame)}
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Restart</span>
-              </button>
-              <button
-                id="ctrl-flip"
-                className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 active:scale-95 transition-all text-sm font-semibold hover:border-neutral-700 text-neutral-200"
-                onClick={() => setIsFlipped(!isFlipped)}
-              >
-                <FlipHorizontal className="w-4 h-4" />
-                <span>Flip Board</span>
-              </button>
-              <div className="flex items-center justify-center gap-1 px-2 py-1 bg-neutral-900/40 border border-neutral-900 rounded-xl font-mono text-[10px] text-neutral-400">
-                <Computer className="w-4 h-4 text-emerald-500" />
-                <span>Stockfish Depth {getEngineDepth(selectedEndgame.difficulty)}</span>
+            <div className="w-full space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  id="ctrl-restart"
+                  className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 active:scale-95 transition-all text-xs sm:text-sm font-semibold hover:border-neutral-700 text-neutral-200"
+                  onClick={() => loadEndgame(selectedEndgame)}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restart</span>
+                </button>
+                <button
+                  id="ctrl-flip"
+                  className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 active:scale-95 transition-all text-xs sm:text-sm font-semibold hover:border-neutral-700 text-neutral-200"
+                  onClick={() => setIsFlipped(!isFlipped)}
+                >
+                  <FlipHorizontal className="w-4 h-4" />
+                  <span>Flip Board</span>
+                </button>
+                <div className="relative">
+                  <select
+                    id="ctrl-theme"
+                    className="w-full h-full flex items-center justify-center p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 transition-all text-xs sm:text-sm font-semibold hover:border-neutral-700 text-neutral-200 appearance-none text-center cursor-pointer select-none"
+                    value={boardTheme}
+                    onChange={(e) => setBoardTheme(e.target.value as any)}
+                  >
+                    <option value="emerald">🟢 Emerald</option>
+                    <option value="blue">🔵 Ocean Blue</option>
+                    <option value="charcoal">⚫ Charcoal</option>
+                    <option value="indigo">🌌 Indigo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40 border border-neutral-900 rounded-xl font-mono text-[10px] text-neutral-400">
+                <div className="flex items-center gap-1">
+                  <Computer className="w-4 h-4 text-emerald-500" />
+                  <span>Stockfish Depth {getEngineDepth(selectedEndgame.difficulty)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="text-[9px] uppercase font-bold tracking-wider text-neutral-500 font-semibold">Auto-Save Active</span>
+                </div>
               </div>
             </div>
           </div>

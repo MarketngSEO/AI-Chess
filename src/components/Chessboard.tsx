@@ -96,6 +96,7 @@ interface ChessboardProps {
   onPremove?: (from: string, to: string, promotion?: string) => void;
   onClearPremoves?: () => void;
   isFlipped?: boolean;
+  boardTheme?: "emerald" | "blue" | "charcoal" | "indigo";
 }
 
 const getHypotheticalChessState = (
@@ -134,6 +135,7 @@ export default function Chessboard({
   onPremove,
   onClearPremoves,
   isFlipped,
+  boardTheme = "emerald",
 }: ChessboardProps) {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [validMoves, setValidMoves] = useState<string[]>([]);
@@ -309,6 +311,40 @@ export default function Chessboard({
     return `https://lichess1.org/assets/piece/cburnett/${pieceCode}.svg`;
   };
 
+  const getThemeColors = (theme: "emerald" | "blue" | "charcoal" | "indigo" = "emerald") => {
+    switch (theme) {
+      case "blue":
+        return {
+          dark: "bg-sky-800",
+          light: "bg-[#f0ebd8]",
+          textDark: "text-sky-900/80",
+          textLight: "text-[#f0ebd8]/85",
+        };
+      case "charcoal":
+        return {
+          dark: "bg-zinc-700",
+          light: "bg-zinc-300",
+          textDark: "text-zinc-800/80",
+          textLight: "text-zinc-100/85",
+        };
+      case "indigo":
+        return {
+          dark: "bg-indigo-900",
+          light: "bg-slate-200",
+          textDark: "text-indigo-900/80",
+          textLight: "text-indigo-100/85",
+        };
+      case "emerald":
+      default:
+        return {
+          dark: "bg-emerald-800",
+          light: "bg-[#f0ebd8]",
+          textDark: "text-emerald-900/80",
+          textLight: "text-[#f0ebd8]/85",
+        };
+    }
+  };
+
   const getSquareCenterPercent = (squareName: string) => {
     const file = squareName[0];
     const rank = parseInt(squareName[1]);
@@ -468,9 +504,10 @@ export default function Chessboard({
             const isPremoveDst = premoves.some((pm) => pm.to === squareName);
 
             // Compute background color classes
-            let squareBg = isDark ? "bg-emerald-800" : "bg-[#f0ebd8]";
+            const themeColors = getThemeColors(boardTheme);
+            let squareBg = isDark ? themeColors.dark : themeColors.light;
             if (isHighlighted) {
-              squareBg = "bg-[#f0ebd8]";
+              squareBg = themeColors.light;
             }
             if (isSelected) {
               squareBg = "bg-yellow-300/60";
@@ -649,7 +686,7 @@ export default function Chessboard({
                 {rank === ranks[ranks.length - 1] && (
                   <span
                     className={`absolute bottom-0.5 right-1 text-[10px] font-bold select-none z-30 ${
-                      isDark ? "text-[#f0ebd8]/80" : "text-emerald-900/80"
+                      isDark ? themeColors.textLight : themeColors.textDark
                     }`}
                   >
                     {file}
@@ -660,7 +697,7 @@ export default function Chessboard({
                 {file === files[0] && (
                   <span
                     className={`absolute top-0.5 left-1 text-[10px] font-bold select-none z-30 ${
-                      isDark ? "text-[#f0ebd8]/80" : "text-emerald-900/80"
+                      isDark ? themeColors.textLight : themeColors.textDark
                     }`}
                   >
                     {rank}
@@ -677,23 +714,23 @@ export default function Chessboard({
         <defs>
           <marker
             id="arrowhead-orange"
-            markerWidth="8"
-            markerHeight="8"
-            refX="5"
+            markerWidth="10"
+            markerHeight="10"
+            refX="6.5"
             refY="4"
             orient="auto"
           >
-            <path d="M 0.5,1 C 1.8,2.2 1.8,5.8 0.5,7 L 7,4 Z" fill="#f6a23e" />
+            <path d="M 1.5,1.5 L 7,4 L 1.5,6.5 L 2.8,4 Z" fill="#f6a23e" />
           </marker>
           <marker
             id="arrowhead-red"
-            markerWidth="8"
-            markerHeight="8"
-            refX="5"
+            markerWidth="10"
+            markerHeight="10"
+            refX="6.5"
             refY="4"
             orient="auto"
           >
-            <path d="M 0.5,1 C 1.8,2.2 1.8,5.8 0.5,7 L 7,4 Z" fill="#ef4444" />
+            <path d="M 1.5,1.5 L 7,4 L 1.5,6.5 L 2.8,4 Z" fill="#ef4444" />
           </marker>
         </defs>
 
