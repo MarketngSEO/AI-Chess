@@ -1,0 +1,6 @@
+{
+  "name": "Chess Endgame Trainer",
+  "description": "An interactive chess endgame training platform with an integrated Stockfish engine opponent and a Gemini-powered Master Chess Coach.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
