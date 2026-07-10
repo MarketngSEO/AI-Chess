@@ -1261,25 +1261,47 @@ export default function App() {
             {/* Chessboard & Eval Bar row */}
             <div className="relative w-full flex items-stretch gap-3">
               {/* Vertical Lichess-style Evaluation Bar */}
-              <div className="w-5 bg-neutral-800 rounded-md overflow-hidden border border-neutral-700 flex flex-col justify-end relative shadow-inner select-none shrink-0">
+              <div className="w-5 bg-neutral-800 rounded-md overflow-hidden border border-neutral-700 flex flex-col relative shadow-inner select-none shrink-0">
                 {/* Score indicators */}
                 <div className="absolute inset-0 flex flex-col justify-between items-center text-[8px] font-bold py-2 font-mono text-neutral-400/80 pointer-events-none z-10">
-                  <span>+5</span>
+                  <span>{isFlipped ? "-5" : "+5"}</span>
                   <span>0</span>
-                  <span>-5</span>
+                  <span>{isFlipped ? "+5" : "-5"}</span>
                 </div>
 
-                {/* White advantage segment (grows from bottom) */}
-                <div
-                  className="w-full bg-[#f0ebd8] transition-all duration-500 ease-out"
-                  style={{ height: `${evalPercentage}%` }}
-                />
+                {isFlipped ? (
+                  <>
+                    {/* White advantage segment (on top when flipped) */}
+                    <div
+                      key="white-seg-flipped"
+                      className="w-full bg-[#f0ebd8] transition-all duration-500 ease-out"
+                      style={{ height: `${evalPercentage}%` }}
+                    />
 
-                {/* Black advantage segment (rest of the bar is dark) */}
-                <div
-                  className="w-full bg-neutral-900 transition-all duration-500 ease-out"
-                  style={{ height: `${100 - evalPercentage}%` }}
-                />
+                    {/* Black advantage segment (on bottom when flipped) */}
+                    <div
+                      key="black-seg-flipped"
+                      className="w-full bg-neutral-900 transition-all duration-500 ease-out"
+                      style={{ height: `${100 - evalPercentage}%` }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Black advantage segment (on top when not flipped) */}
+                    <div
+                      key="black-seg-normal"
+                      className="w-full bg-neutral-900 transition-all duration-500 ease-out"
+                      style={{ height: `${100 - evalPercentage}%` }}
+                    />
+
+                    {/* White advantage segment (on bottom when not flipped) */}
+                    <div
+                      key="white-seg-normal"
+                      className="w-full bg-[#f0ebd8] transition-all duration-500 ease-out"
+                      style={{ height: `${evalPercentage}%` }}
+                    />
+                  </>
+                )}
 
                 {/* Micro numerical label overlaid on bar */}
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/60 px-1 py-0.5 rounded text-[7px] font-bold text-white font-mono pointer-events-none z-20 whitespace-nowrap">
@@ -1315,6 +1337,7 @@ export default function App() {
                   premoves={premoves}
                   onPremove={handlePremove}
                   onClearPremoves={handleClearPremoves}
+                  isFlipped={isFlipped}
                 />
 
                 {sidebarMode === "custom" && isEditingLayout && (

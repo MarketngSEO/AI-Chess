@@ -95,6 +95,7 @@ interface ChessboardProps {
   premoves?: Array<{ from: string; to: string; promotion?: string }>;
   onPremove?: (from: string, to: string, promotion?: string) => void;
   onClearPremoves?: () => void;
+  isFlipped?: boolean;
 }
 
 const getHypotheticalChessState = (
@@ -132,6 +133,7 @@ export default function Chessboard({
   premoves = [],
   onPremove,
   onClearPremoves,
+  isFlipped,
 }: ChessboardProps) {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [validMoves, setValidMoves] = useState<string[]>([]);
@@ -170,9 +172,10 @@ export default function Chessboard({
     setArrows([]);
   }, [fen]);
 
-  // Generate board ranks and files depending on board orientation (playerColor)
-  const ranks = playerColor === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
-  const files = playerColor === "w" ? ["a", "b", "c", "d", "e", "f", "g", "h"] : ["h", "g", "f", "e", "d", "c", "b", "a"];
+  // Generate board ranks and files depending on board orientation (isFlipped or playerColor)
+  const isBoardFlipped = isFlipped !== undefined ? isFlipped : playerColor === "b";
+  const ranks = isBoardFlipped ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1];
+  const files = isBoardFlipped ? ["h", "g", "f", "e", "d", "c", "b", "a"] : ["a", "b", "c", "d", "e", "f", "g", "h"];
 
   const getPieceAt = (squareName: string) => {
     return parsedPieces[squareName] || null;
