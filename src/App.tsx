@@ -398,11 +398,35 @@ export default function App() {
         }
       }
     } catch (err) {
-      console.warn("Lichess Cloud Eval not available, continuing to Stockfish", err);
+      console.warn("Lichess Cloud Eval not available, continuing to chess-api.com", err);
     }
 
-    // 2. Fallback to Stockfish Online API at max depth 16
-    const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=16`;
+    // 2. Try chess-api.com (POST) - super fast, uses Stockfish 16 at high depth
+    try {
+      const res = await fetch("https://chess-api.com/v1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fen }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        let bestMoveUci = data.bestMove || data.best_move;
+        if (bestMoveUci) {
+          bestMoveUci = bestMoveUci.replace(/^bestmove\s+/, "");
+          console.log("Fetched elite move from Chess API:", bestMoveUci, data);
+          return {
+            bestMove: bestMoveUci,
+            evaluation: data.eval !== undefined ? data.eval : undefined,
+            mate: data.mate !== undefined ? data.mate : null
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("chess-api.com not available, continuing to Stockfish.online", err);
+    }
+
+    // 3. Fallback to Stockfish Online API at max depth 15 (depth 15 is 100% reliable)
+    const url = `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=15`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Stockfish.online v2 error with status ${response.status}`);
@@ -436,6 +460,55 @@ export default function App() {
       console.warn("Could not retrieve evaluation in background", err);
     }
   };
+
+  // Live Analysis Hook
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setAnalysisArrow(null);
+      return;
+    }
+
+    let isCurrent = true;
+    const runAnalysis = async () => {
+      setAnalysisLoading(true);
+      try {
+        const res = await fetchBestMove(boardFen);
+        if (!isCurrent) return;
+
+        if (res.bestMove) {
+          const from = res.bestMove.substring(0, 2);
+          const to = res.bestMove.substring(2, 4);
+          setAnalysisArrow({ from, to });
+        } else {
+          setAnalysisArrow(null);
+        }
+
+        if (res.evaluation !== undefined) {
+          setEvaluation(res.evaluation);
+        }
+        if (res.mate !== undefined) {
+          setForcedMate(res.mate);
+        } else {
+          setForcedMate(null);
+        }
+      } catch (err) {
+        console.warn("Live analysis failed:", err);
+        if (isCurrent) {
+          setAnalysisArrow(null);
+        }
+      } finally {
+        if (isCurrent) {
+          setAnalysisLoading(false);
+        }
+      }
+    };
+
+    runAnalysis();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [boardFen, isAnalyzing]);
 
   const makeComputerMove = useCallback(
     async (chessInstance: Chess) => {
@@ -1382,6 +1455,7 @@ export default function App() {
                   onClearPremoves={handleClearPremoves}
                   isFlipped={isFlipped}
                   boardTheme={boardTheme}
+                  analysisArrow={analysisArrow}
                 />
 
                 {sidebarMode === "custom" && isEditingLayout && (
@@ -1508,6 +1582,37 @@ export default function App() {
                     <option value="charcoal">⚫ Charcoal</option>
                     <option value="indigo">🌌 Indigo</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Dynamic Live Engine Analysis Toggle */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-neutral-900/60 border border-neutral-800 shadow-md">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-neutral-950 text-emerald-400">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-xs font-bold text-neutral-200 block">Live Engine Analysis</span>
+                    <span className="text-[10px] text-neutral-400">Shows best move transparent arrow live</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {analysisLoading && isAnalyzing && (
+                    <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  )}
+                  <button
+                    id="toggle-analysis-btn"
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      isAnalyzing ? "bg-emerald-600" : "bg-neutral-850 border-neutral-700"
+                    }`}
+                    onClick={() => setIsAnalyzing(!isAnalyzing)}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        isAnalyzing ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
 
