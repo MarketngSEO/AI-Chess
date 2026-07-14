@@ -61,7 +61,7 @@ export const ENDGAMES: ChessEndgame[] = [
     id: "k_bb_k",
     name: "Two Bishops Checkmate",
     difficulty: Difficulty.INTERMEDIATE,
-    fen: "4k3/8/8/8/8/8/8/2B1K1B1 w - - 0 1",
+    fen: "4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1",
     playerColor: "w",
     description: "A beautiful checkmate demonstrating diagonal control. It requires careful coordination to avoid stalemate.",
     objective: "Force the Black King into a corner and checkmate him using your two bishops.",
